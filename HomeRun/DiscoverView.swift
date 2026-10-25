@@ -29,10 +29,18 @@ struct DiscoverView: View {
     @State private var addressResults: [Place] = []
     @State private var handoff = Handoff.campusDefault
     @State private var trips: [Trip] = []
+    @State private var dateFilter: String?
     @State private var estimates: [String: DetourEstimate] = [:]
     @State private var searching = false
     @State private var error: String?
     @State private var request: RequestDraft?
+    @State private var gallery: Place?
+    @State private var savedPlaceIds: Set<String> = []
+    @State private var category = "all"
+    @State private var draftCategory = "all"
+    @State private var showFilters = false
+    @State private var searchGeneration = 0
+    @State private var showCities = false
 
     init(initialCity: String = Places.origins[0].name, initialQuery: String = "", focusTripID: String? = nil, embedded: Bool = false) {
         self.initialCity = initialCity
@@ -60,70 +68,115 @@ struct DiscoverView: View {
     private var browser: some View {
         ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text("Choose a place, then a trip.")
-                        .font(Theme.text(.subheadline))
-                        .foregroundStyle(Theme.muted)
-                    HStack(spacing: 8) {
-                        Menu {
-                            ForEach(Places.origins) { origin in
-                                Button(origin.name) { city = origin.name }
-                            }
-                        } label: {
-                            Text(city)
-                                .font(Theme.text(.subheadline, weight: .semibold))
-                                .foregroundStyle(Theme.maroon)
-                                .lineLimit(1)
-                                .frame(minHeight: 44)
-                        }
-                        .accessibilityLabel("Restaurant city, \(city)")
-                        TextField("Restaurant or store", text: $search, prompt: Text("Restaurant or store").foregroundStyle(Theme.muted))
-                            .textFieldStyle(.plain)
-                            .submitLabel(.search)
-                            .frame(minHeight: 44)
-                            .onSubmit { Task { await searchPlaces() } }
-                        Button("Search") {
-                            Task { await searchPlaces() }
-                        }
-                        .fontWeight(.bold)
-                        .frame(minHeight: 44)
-                        .disabled(searching)
-                        .sensoryFeedback(.selection, trigger: searching) { _, started in started }
+                    if !embedded {
+                        PageHeader(title: "Discover", detail: "Find a place, then a trip.")
+                            .padding(.horizontal, -20)
                     }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 4)
-                    .background(Theme.surface)
-                    .clipShape(InkCard())
-                    .overlay(InkCard().stroke(Theme.ink.opacity(0.28), lineWidth: 1.3))
+                    VStack(alignment: .leading, spacing: 8) {
+                        PickupCityButton(city: city) { showCities = true }
+                        Text("Delivering to College Station.")
+                            .font(Theme.text(.caption))
+                            .foregroundStyle(Theme.muted)
+                        ChoiceBar(
+                            options: ["all", "food", "groceries", "stores"],
+                            label: { option in
+                                switch option {
+                                case "food": return "Food"
+                                case "groceries": return "Groceries"
+                                case "stores": return "Stores"
+                                default: return "All"
+                                }
+                            },
+                            selection: $category
+                        )
+                        Button("Filters") {
+                            draftCategory = category
+                            showFilters = true
+                        }
+                        .font(Theme.text(.caption, weight: .semibold))
+                        .accessibilityIdentifier("discover-filters")
+                        HStack(spacing: 8) {
+                            TextField("Restaurant or store", text: $search, prompt: Text("Restaurant or store").foregroundStyle(Theme.muted))
+                                .textFieldStyle(.plain)
+                                .submitLabel(.search)
+                                .frame(minHeight: 44)
+                                .accessibilityIdentifier("place-search")
+                                .onSubmit { Task { await searchPlaces(immediate: true) } }
+                            Button("Search") {
+                                Task { await searchPlaces(immediate: true) }
+                            }
+                            .font(Theme.text(.body, weight: .bold))
+                            .frame(minWidth: 44, minHeight: 44)
+                            .disabled(searching)
+                            .accessibilityIdentifier("place-search-submit")
+                        }
+                    }
+                    .padding(14)
+                    .sketchPanel()
+                    .onChange(of: search) { _, _ in
+                        searchGeneration += 1
+                        let token = searchGeneration
+                        Task {
+                            try? await Task.sleep(for: .milliseconds(300))
+                            guard token == searchGeneration else { return }
+                            await searchPlaces(immediate: false, token: token)
+                        }
+                    }
+                    .onChange(of: category) { _, _ in
+                        restaurant = nil
+                        Task { await searchPlaces(immediate: true) }
+                    }
                     if let error { ErrorBanner(message: error) }
+                    if source == "sample" && error == nil {
+                        Text("Sample places in \(city). Not live store listings.")
+                            .font(Theme.text(.caption))
+                            .foregroundStyle(Theme.muted)
+                    }
                     if searching { ProgressView("Searching \(city)…") }
                     if restaurant == nil {
                         if !searching && places.isEmpty && error == nil {
-                            EmptyState(title: "Search \(city)", message: "Places come from Google, or OpenStreetMap if Google has no key.")
+                            EmptyState(title: "No places in \(city)", message: "Try another name, or change the pickup city.")
                         }
                         ForEach(places) { place in
-                            Button {
-                                Haptics.tap()
-                                restaurant = (place, source ?? "osm")
-                            } label: {
-                                HStack(spacing: 12) {
-                                    PlacePlate(name: place.name)
+                            HStack(spacing: 12) {
+                                Button { gallery = place } label: { PlacePhoto(place: place) }
+                                    .accessibilityLabel("Photo of \(place.name)")
+                                Button {
+                                    Haptics.tap()
+                                    restaurant = (place, source ?? place.contentSource ?? "sample")
+                                } label: {
                                     VStack(alignment: .leading, spacing: 4) {
                                         Text(place.name).font(Theme.text(.headline, weight: .semibold)).foregroundStyle(Theme.ink)
                                         Text(place.address).font(Theme.text(.caption)).foregroundStyle(Theme.muted)
                                         if let rating = place.rating {
-                                            Text("\(rating, format: .number.precision(.fractionLength(1))) · \(place.ratingCount ?? 0) ratings")
+                                            Text("\(rating, format: .number.precision(.fractionLength(1)))")
                                                 .font(Theme.text(.caption, weight: .semibold))
                                                 .foregroundStyle(Theme.maroon)
                                         }
+                                        if place.outsideCity == true {
+                                            Text("Outside \(city)")
+                                                .font(Theme.text(.caption))
+                                                .foregroundStyle(Theme.coral)
+                                        }
+                                        if let credit = place.photoCredit {
+                                            Text("Photo: \(credit)")
+                                                .font(Theme.text(.caption2))
+                                                .foregroundStyle(Theme.muted)
+                                        }
                                     }
-                                    Spacer(minLength: 8)
-                                    Image(systemName: "chevron.right").foregroundStyle(Theme.muted).accessibilityHidden(true)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
                                 }
-                                .padding(12)
-                                .sketchPanel()
+                                .buttonStyle(.plain)
+                                Button { Task { await toggleSaved(place) } } label: {
+                                    Image(systemName: savedPlaceIds.contains(place.placeId) ? "bookmark.fill" : "bookmark")
+                                        .foregroundStyle(Theme.maroon)
+                                        .frame(width: 44, height: 44)
+                                }
+                                .accessibilityLabel(savedPlaceIds.contains(place.placeId) ? "Remove saved place" : "Save place")
                             }
-                            .buttonStyle(PressStyle())
-                            .accessibilityLabel("\(place.name), \(place.address)")
+                            .padding(12)
+                            .sketchPanel()
+                            .accessibilityIdentifier("place-result-\(place.placeId)")
                         }
                     } else if let restaurant {
                         Card {
@@ -140,12 +193,8 @@ struct DiscoverView: View {
                             }
                             Button("Change") { self.restaurant = nil }.fontWeight(.bold)
                         }
-                        Text("Handoff").font(Theme.display(.title3))
-                        Picker("Handoff", selection: $handoffMode) {
-                            Text("Campus").tag("campus")
-                            Text("Address").tag("address")
-                        }
-                        .pickerStyle(.segmented)
+                        Text("Handoff").font(Theme.section())
+                        ChoiceBar(options: ["campus", "address"], label: { $0 == "campus" ? "Campus" : "Address" }, selection: $handoffMode)
                         if handoffMode == "campus" {
                             ForEach(Places.meetups) { point in
                                 Button {
@@ -192,10 +241,26 @@ struct DiscoverView: View {
                                 .buttonStyle(.plain)
                             }
                         }
-                        Text("Drivers").font(Theme.display(.title3))
+                        Text("Trips").font(Theme.section())
+                        if !dayChoices.isEmpty {
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack {
+                                    filterChip("Any day", selected: dateFilter == nil) { dateFilter = nil }
+                                    ForEach(dayChoices, id: \.self) { day in
+                                        filterChip(day, selected: dateFilter == day) { dateFilter = day }
+                                    }
+                                }
+                            }
+                        }
+                        if dateFilter != nil && ranked.isEmpty {
+                            Button("Clear date") { dateFilter = nil }
+                                .font(Theme.text(.caption, weight: .semibold))
+                        }
                         Text("Fee: \(Fees.formula).").font(Theme.text(.caption)).foregroundStyle(Theme.muted)
                         if ranked.isEmpty {
                             EmptyState(title: "No trips from \(city)", message: "No one has posted a drive from here yet.")
+                            NavigationLink("Save a request") { SavedRequestsView(city: city) }
+                                .font(Theme.text(.body, weight: .semibold))
                         }
                         ForEach(ranked, id: \.trip.id) { row in
                             VStack(alignment: .leading, spacing: 8) {
@@ -205,16 +270,18 @@ struct DiscoverView: View {
                                         .foregroundStyle(Theme.maroon)
                                 }
                                 TripSummary(trip: row.trip)
-                                if row.own {
-                                    Text("This is your trip.").font(Theme.text(.caption)).foregroundStyle(Theme.muted)
-                                } else if let estimate = row.estimate {
-                                    Text("\(Format.minutes(estimate.detourMinutes)) added · \(Fees.money(Fees.estimate(estimate.detourMinutes)))")
+                        if row.own {
+                            Text("Your trip.").font(Theme.text(.caption, weight: .bold)).foregroundStyle(Theme.maroon)
+                            Text("You can inspect it here. Switch to another person to request a pickup.")
+                                .font(Theme.text(.caption)).foregroundStyle(Theme.muted)
+                        } else if let estimate = row.estimate {
+                                    Text("\(Format.minutes(estimate.detourMinutes)) added · \(previewFee(estimate))")
                                         .font(Theme.text(.subheadline, weight: .bold)).foregroundStyle(Theme.maroon)
                                     if estimate.detourMinutes > 45 {
                                         Text("Long detour. The driver may decline.").font(Theme.text(.caption)).foregroundStyle(Theme.coral)
                                     }
                                     if estimate.source == "straight_line" {
-                                        Text("Approximate · routing unavailable").font(Theme.text(.caption)).foregroundStyle(Theme.muted)
+                                        Text("Approximate distance. A driving route wasn't available.").font(Theme.text(.caption)).foregroundStyle(Theme.muted)
                                     }
                                     Button("Request delivery") {
                                         request = RequestDraft(trip: row.trip, estimate: estimate, place: restaurant.place, source: restaurant.source, handoff: handoff)
@@ -227,31 +294,114 @@ struct DiscoverView: View {
                                 }
                             }
                             .padding(12)
-                            .sketchPanel()
+                            .ticketPanel()
                         }
                     }
                 }
                 .padding(20)
             }
             .homeRunPage(road: false)
+            .background(Theme.cream.ignoresSafeArea())
             .navigationTitle("Discover")
-            .toolbar(.visible, for: .navigationBar)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(embedded ? .visible : .hidden, for: .navigationBar)
+            .toolbarBackground(Theme.cream, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.light, for: .navigationBar)
             .task {
-                let typed = initialQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !typed.isEmpty { await searchPlaces() }
+                if !embedded { city = model.pickupCity }
+                await searchPlaces(immediate: true)
             }
-            .task(id: city) { await loadTrips() }
+            .task(id: city) {
+                restaurant = nil
+                await loadTrips()
+                await searchPlaces(immediate: true)
+            }
+            .refreshable {
+                await loadTrips()
+                await searchPlaces(immediate: true)
+            }
+            .sheet(isPresented: $showCities) {
+                PickupCitySheet { name in
+                    city = name
+                    model.confirmPickupCity(name)
+                    restaurant = nil
+                }
+            }
             .task(id: estimateKey) { await estimateAll() }
             .sheet(item: $request) { draft in
                 RequestSheet(draft: draft) { request = nil }
             }
+            .sheet(item: $gallery) { place in
+                PlaceGallery(place: place)
+            }
+            .sheet(isPresented: $showFilters) {
+                NavigationStack {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Category").font(Theme.section())
+                        ChoiceBar(
+                            options: ["all", "food", "groceries", "stores"],
+                            label: { option in
+                                switch option {
+                                case "food": return "Food"
+                                case "groceries": return "Groceries"
+                                case "stores": return "Stores"
+                                default: return "All"
+                                }
+                            },
+                            selection: $draftCategory
+                        )
+                        Text("The pickup city stays \(city).")
+                            .font(Theme.text(.caption))
+                            .foregroundStyle(Theme.muted)
+                        PrimaryButton(title: "Apply") {
+                            category = draftCategory
+                            showFilters = false
+                        }
+                        Button("Reset") { draftCategory = "all" }
+                            .font(Theme.text(.body, weight: .semibold))
+                        Button("Clear all") {
+                            category = "all"
+                            draftCategory = "all"
+                            showFilters = false
+                        }
+                        .font(Theme.text(.body, weight: .semibold))
+                        Spacer()
+                    }
+                    .padding(20)
+                    .homeRunPage(road: false)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Cancel") { showFilters = false }
+                        }
+                    }
+                }
+                .presentationDetents([.medium])
+            }
+            .task { await loadSavedPlaces() }
     }
 
     private struct Ranked { var trip: Trip; var estimate: DetourEstimate?; var own: Bool }
 
+    private var dayChoices: [String] {
+        Array(Set(trips.map { Format.chicagoDay($0.departureAt) })).sorted()
+    }
+
+    private func filterChip(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(Theme.text(.caption, weight: .semibold))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(selected ? Theme.maroon : Theme.surface)
+                .foregroundStyle(selected ? Color.white : Theme.ink)
+                .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
     private var ranked: [Ranked] {
-        trips.map { trip in
+        trips.filter { dateFilter == nil || Format.chicagoDay($0.departureAt) == dateFilter }.map { trip in
             Ranked(trip: trip, estimate: estimates[trip.id], own: trip.driverId == model.user?.id)
         }
         .sorted { lhs, rhs in
@@ -262,15 +412,59 @@ struct DiscoverView: View {
         }
     }
 
-    private func searchPlaces() async {
-        searching = true
-        defer { searching = false }
+    private func previewFee(_ estimate: DetourEstimate) -> String {
+        guard DemoRouteFixture.isPricedRoad(estimate.source) else { return "Price needs review" }
+        let meters = max(0, (estimate.withKm - estimate.baseKm) * 1000)
+        let seconds = max(0, estimate.detourMinutes * 60)
+        switch PricingPolicy.evaluate(.init(extraMeters: meters, extraSeconds: seconds, weightPounds: 1, weightConfirmed: true, bulky: false, agreedWaitingMinutes: 0)) {
+        case .quoted(let quote): return "from \(Fees.money(quote.dollars))"
+        case .manualReview: return "Price needs review"
+        }
+    }
+
+    private func loadSavedPlaces() async {
+        let list: SavedPlaceList = (try? await model.client().store("saved-places")) ?? SavedPlaceList(places: [])
+        savedPlaceIds = Set(list.places.map(\.placeId))
+    }
+
+    private func toggleSaved(_ place: Place) async {
+        struct Body: Encodable {
+            var placeId: String
+            var name: String
+            var address: String
+            var lat: Double
+            var lng: Double
+            var city: String
+            var photoName: String?
+            var photoCredit: String?
+            var contentSource: String?
+        }
         do {
-            let response: PlaceSearchResponse = try await model.client().geo("places", query: ["city": city, "q": search])
+            let list: SavedPlaceList = try await model.client().store("saved-places", method: "POST", body: Body(placeId: place.placeId, name: place.name, address: place.address, lat: place.lat, lng: place.lng, city: city, photoName: place.photoName, photoCredit: place.photoCredit, contentSource: place.contentSource))
+            savedPlaceIds = Set(list.places.map(\.placeId))
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    private func searchPlaces(immediate: Bool, token: Int? = nil) async {
+        if immediate { searchGeneration += 1 }
+        let current = token ?? searchGeneration
+        searching = true
+        defer { if current == searchGeneration { searching = false } }
+        do {
+            let response: PlaceSearchResponse = try await model.client().geo(
+                "places",
+                query: ["city": city, "q": search, "category": category]
+            )
+            guard current == searchGeneration else { return }
             places = response.places
             source = response.source
-            error = places.isEmpty ? "No restaurants found for \(search)." : nil
+            error = nil
         } catch {
+            guard current == searchGeneration else { return }
+            places = []
+            source = nil
             self.error = error.localizedDescription
         }
     }
@@ -347,6 +541,10 @@ struct RequestSheet: View {
     var draft: RequestDraft
     var onDone: () -> Void
     @State private var note = ""
+    @State private var lines: [ItemDraft] = [ItemDraft()]
+    @State private var personal = false
+    @State private var reference = ""
+    @State private var operationKey = UUID().uuidString
     @State private var busy = false
     @State private var error: String?
     @State private var confirmed: Order?
@@ -357,9 +555,9 @@ struct RequestSheet: View {
                 VStack(alignment: .leading, spacing: 16) {
                     if let confirmed {
                         Text("Request stored")
-                            .font(Theme.display(.title))
+                            .font(Theme.brand(.title))
                             .foregroundStyle(Theme.maroon)
-                        Text(confirmed.restaurantName).font(Theme.display(.title3))
+                        Text(confirmed.restaurantName).font(Theme.section())
                         StatusPill(status: confirmed.status)
                         Text("This is the status Home Run saved. The driver has not accepted it yet, and no payment was taken.")
                             .font(Theme.text(.subheadline))
@@ -368,17 +566,43 @@ struct RequestSheet: View {
                         PrimaryButton(title: "Done") { onDone(); dismiss() }
                     } else {
                         Text("Ask \(Format.firstName(draft.trip.driver?.displayName)) to grab \(draft.place.name)")
-                            .font(Theme.display(.title2)).foregroundStyle(Theme.maroon)
+                            .font(Theme.brand(.title2)).foregroundStyle(Theme.maroon)
                         CityRoute(origin: draft.trip.originCity, destination: draft.trip.destinationCity)
                         Text("Leaves \(Format.relative(draft.trip.departureAt))").foregroundStyle(Theme.muted)
                         Text("Handoff at \(draft.handoff.label)").foregroundStyle(Theme.muted)
                         Text("Added drive \(Format.minutes(draft.estimate.detourMinutes))")
-                        Text("Delivery fee \(Fees.money(Fees.estimate(draft.estimate.detourMinutes)))").font(Theme.display(.title3))
+                        Toggle(personal ? "Personal item pickup" : "I order and pay the store separately", isOn: $personal)
+                        ForEach($lines) { $line in
+                            VStack(alignment: .leading, spacing: 8) {
+                                TextField("What should they pick up?", text: $line.name).padding(12).sketchPanel()
+                                Stepper("Quantity \(line.quantity)", value: $line.quantity, in: 1...12)
+                                TextField("Weight each, pounds. Leave blank if unknown.", text: $line.weight)
+                                    .keyboardType(.decimalPad)
+                                    .padding(12)
+                                    .sketchPanel()
+                                Toggle("Bulky", isOn: $line.bulky)
+                                Toggle("Fragile", isOn: $line.fragile)
+                                if lines.count > 1 {
+                                    Button("Remove item") { lines.removeAll { $0.id == line.id } }
+                                        .foregroundStyle(Theme.bad)
+                                }
+                            }
+                            .padding(12)
+                            .ticketPanel()
+                        }
+                        Button("Add item") { lines.append(ItemDraft()) }.font(Theme.text(.body, weight: .semibold))
+                        Text(quoteLabel).font(Theme.price())
+                        Text("Paid to the store separately. This delivery fee is simulated.")
+                            .font(Theme.text(.caption))
+                            .foregroundStyle(Theme.muted)
+                        TextField("Pickup reference", text: $reference)
+                            .padding(12)
+                            .sketchPanel()
                         if let website = restaurantURL(draft.place.website) {
                             Link("Restaurant website", destination: website).fontWeight(.bold)
                         }
                         RouteMap(path: draft.estimate.withPath)
-                        Text(draft.estimate.source == "straight_line" ? "Approximate path. Routing was unavailable." : "Road route from the routing service. Apple Maps provides this map.")
+                        Text(routeCaption(draft.estimate.source))
                             .font(Theme.text(.caption))
                             .foregroundStyle(Theme.muted)
                         TextField("Note for the driver", text: $note, axis: .vertical)
@@ -399,7 +623,53 @@ struct RequestSheet: View {
                 old == nil && new != nil
             }
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
+            .onAppear {
+                let staged = model.takeRepeatLines()
+                if !staged.isEmpty {
+                    lines = staged.map {
+                        ItemDraft(id: $0.id, name: $0.name, quantity: $0.quantity, weight: $0.weightPounds.map { String($0) } ?? "", bulky: $0.bulky, fragile: $0.fragile)
+                    }
+                }
+            }
+            .presentationDragIndicator(.visible)
         }
+    }
+
+    private var measured: (meters: Double, seconds: Double, source: String) {
+        let meters = max(0, (draft.estimate.withKm - draft.estimate.baseKm) * 1000)
+        let seconds = max(0, draft.estimate.detourMinutes * 60)
+        return (meters, seconds, draft.estimate.source)
+    }
+
+    private var quoteLabel: String {
+        guard DemoRouteFixture.isPricedRoad(measured.source) else {
+            return "Price needs review"
+        }
+        guard lines.allSatisfy({ !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else {
+            return "Name each item to see the delivery fee."
+        }
+        let confirmed = lines.allSatisfy { Double($0.weight) != nil }
+        guard confirmed else { return "Unknown weight needs a reviewed price." }
+        let pounds = lines.reduce(0.0) { $0 + (Double($1.weight) ?? 0) * Double($1.quantity) }
+        switch PricingPolicy.evaluate(.init(extraMeters: measured.meters, extraSeconds: measured.seconds, weightPounds: pounds, weightConfirmed: true, bulky: lines.contains { $0.bulky }, agreedWaitingMinutes: 0)) {
+        case .quoted(let quote):
+            return "Delivery fee \(Fees.money(quote.dollars))"
+        case .manualReview(let reason):
+            return reason
+        }
+    }
+
+    private func routeCaption(_ source: String) -> String {
+        if source == "straight_line" {
+            return "Approximate path. A driving route wasn't available."
+        }
+        if GoogleMapsStartup.isReady {
+            if source == "google" {
+                return "Driving route. Google Maps provides this map."
+            }
+            return "Google Maps provides this map. The road measurement is a separate estimate."
+        }
+        return "Driving route. Apple Maps provides this map."
     }
 
     private func submit() {
@@ -408,7 +678,27 @@ struct RequestSheet: View {
         Task {
             defer { busy = false }
             do {
-                let fee = Fees.estimate(draft.estimate.detourMinutes)
+                let prepared = lines.filter { !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+                guard !prepared.isEmpty else {
+                    error = "Add at least one item."
+                    return
+                }
+                guard !reference.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    error = "Add the pickup reference the runner should look for."
+                    return
+                }
+                let orderLines = prepared.map { line in
+                    OrderLine(
+                        id: line.id,
+                        name: line.name.trimmingCharacters(in: .whitespacesAndNewlines),
+                        quantity: line.quantity,
+                        weightPounds: Double(line.weight),
+                        weightConfirmed: Double(line.weight) != nil,
+                        bulky: line.bulky,
+                        fragile: line.fragile,
+                        note: nil
+                    )
+                }
                 let arrival = (Format.parse(draft.trip.departureAt) ?? Date()).addingTimeInterval(draft.estimate.toDropoffMinutes * 60)
                 let formatter = ISO8601DateFormatter()
                 let body = NewOrderBody(
@@ -425,10 +715,19 @@ struct RequestSheet: View {
                     destinationLat: draft.handoff.lat,
                     destinationLng: draft.handoff.lng,
                     detourMinutes: draft.estimate.detourMinutes,
-                    deliveryFee: fee,
+                    deliveryFee: nil,
                     estimateSource: draft.estimate.source,
                     estimatedArrivalAt: formatter.string(from: arrival),
-                    customerNote: note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : note
+                    customerNote: note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : note,
+                    extraMeters: max(0, (draft.estimate.withKm - draft.estimate.baseKm) * 1000),
+                    extraSeconds: max(0, draft.estimate.detourMinutes * 60),
+                    weightPounds: nil,
+                    weightConfirmed: nil,
+                    bulky: nil,
+                    itemSummary: nil,
+                    pickupReference: reference.trimmingCharacters(in: .whitespacesAndNewlines),
+                    lines: orderLines,
+                    operationKey: operationKey
                 )
                 confirmed = try await model.client().store("orders", method: "POST", body: body)
                 await model.refreshBadges()
@@ -437,6 +736,15 @@ struct RequestSheet: View {
             }
         }
     }
+}
+
+struct ItemDraft: Identifiable, Equatable {
+    var id = UUID().uuidString
+    var name = ""
+    var quantity = 1
+    var weight = ""
+    var bulky = false
+    var fragile = false
 }
 
 func restaurantURL(_ raw: String?) -> URL? {

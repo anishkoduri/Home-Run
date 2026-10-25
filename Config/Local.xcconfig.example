@@ -1,0 +1,17 @@
+// Copy this file to Config/Local.xcconfig and paste keys after the equals signs.
+// Config/Local.xcconfig is gitignored. Do not put keys in Info.plist, Swift source, or chat.
+// No quotes. One key per line.
+
+// Maps SDK for iOS only. Application restriction: iOS apps, bundle ID com.homerun.ios.
+// API restriction: Maps SDK for iOS. This key does not authorize Places or Routes.
+GOOGLE_MAPS_IOS_API_KEY=
+
+// Places API (New) for restaurant search and place photos. Direct REST, not the Maps SDK.
+// Use a separate key. Application restriction: iOS apps, bundle ID com.homerun.ios.
+// API restriction: Places API (New). Leave blank to keep the labeled sample catalog.
+GOOGLE_PLACES_API_KEY=
+
+// Routes API for road distance and duration. Direct REST, not the Maps SDK.
+// Use a separate key. Application restriction: iOS apps, bundle ID com.homerun.ios.
+// API restriction: Routes API. Leave blank to keep the existing road fallback.
+GOOGLE_ROUTES_API_KEY=

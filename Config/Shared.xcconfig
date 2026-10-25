@@ -1,0 +1,7 @@
+// Committed defaults. Local.xcconfig overrides these and is not in Git.
+GOOGLE_MAPS_IOS_API_KEY=
+GOOGLE_PLACES_API_KEY=
+GOOGLE_ROUTES_API_KEY=
+GOOGLE_MAPS_API_KEY=
+
+#include? "Local.xcconfig"

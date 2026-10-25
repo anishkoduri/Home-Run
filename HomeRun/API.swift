@@ -34,9 +34,13 @@ struct APIClient {
             let response = try await PlaceSearch.shared.search(
                 query: query["q"] ?? "",
                 city: query["city"] ?? Places.destination.name,
-                restaurantsOnly: action == "places"
+                restaurantsOnly: action == "places",
+                category: query["category"] ?? "all"
             )
             data = try JSONEncoder().encode(response)
+        } else if action == "city" {
+            let city = try await PlaceSearch.shared.lookupTexasCity(query["q"] ?? "")
+            data = try JSONEncoder().encode(city)
         } else if action == "detour" {
             let payload = try JSONEncoder().encode(AnyEncodable(body ?? EmptyBody()))
             let request = try JSONDecoder().decode(DetourRequest.self, from: payload)

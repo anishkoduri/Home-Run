@@ -18,10 +18,10 @@ struct PostTripView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Route").font(Theme.display(.headline))
+                    Text("Route").font(Theme.section())
                     Picker("Driving from", selection: $origin) {
                         Text("Choose a city").tag("")
-                        ForEach(Places.origins) { Text($0.name).tag($0.name) }
+                        ForEach(Places.selectableCities) { Text($0.name).tag($0.name) }
                     }
                     .accessibilityLabel("Driving from")
                     LabeledContent("To") { Text(Places.destination.name).font(Theme.text(.body, weight: .semibold)) }
@@ -33,7 +33,7 @@ struct PostTripView: View {
                 .sketchPanel()
 
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Planned stops").font(Theme.display(.headline))
+                    Text("Planned stops").font(Theme.section())
                     ForEach(stops) { stop in
                         HStack {
                             Text(stop.name).font(Theme.text(.body))
@@ -70,7 +70,9 @@ struct PostTripView: View {
                     .frame(minHeight: 44)
                     .sketchPanel()
                 if let error { ErrorBanner(message: error) }
-                PrimaryButton(title: "Publish trip", busy: busy) { publish() }
+                Button("Save draft") { publish(status: "draft") }
+                    .font(Theme.text(.body, weight: .semibold))
+                PrimaryButton(title: "Publish trip", busy: busy) { publish(status: "scheduled") }
             }
             .padding(20)
         }
@@ -78,6 +80,9 @@ struct PostTripView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
         .homeRunPage(road: false)
+        .background(Theme.cream.ignoresSafeArea())
+        .toolbarBackground(Theme.cream, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.light, for: .navigationBar)
     }
 
@@ -91,8 +96,8 @@ struct PostTripView: View {
         }
     }
 
-    private func publish() {
-        guard let city = Places.origins.first(where: { $0.name == origin }) else {
+    private func publish(status: String) {
+        guard let city = Places.city(named: origin) else {
             error = "Choose where you're driving from."
             return
         }
@@ -115,7 +120,8 @@ struct PostTripView: View {
                         destinationLng: Places.destination.lng,
                         departureAt: departure,
                         maxOrders: maxOrders,
-                        notes: notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : notes
+                        notes: notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : notes,
+                        status: status
                     ),
                     stops: stops.map {
                         .init(placeId: $0.placeId, restaurantName: String($0.name.prefix(120)), address: $0.address, lat: $0.lat, lng: $0.lng)

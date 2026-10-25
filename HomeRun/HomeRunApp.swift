@@ -5,11 +5,21 @@ struct HomeRunApp: App {
     @State private var model = AppModel()
 
     init() {
-        let display = UIFont(name: "Graduate", size: 18) ?? .systemFont(ofSize: 18, weight: .bold)
+        GoogleMapsStartup.start()
+        let display = UIFont(name: "Fraunces", size: 18) ?? .systemFont(ofSize: 18, weight: .semibold)
         let body = UIFont(name: "Source Sans 3", size: 17) ?? .systemFont(ofSize: 17)
         let caption = UIFont(name: "Source Sans 3", size: 13) ?? .systemFont(ofSize: 13, weight: .semibold)
-        UINavigationBar.appearance().titleTextAttributes = [.font: display]
-        UINavigationBar.appearance().largeTitleTextAttributes = [.font: UIFont(name: "Graduate", size: 32) ?? display]
+        let cream = UIColor(red: 246 / 255, green: 241 / 255, blue: 234 / 255, alpha: 1)
+        let ink = UIColor(red: 28 / 255, green: 18 / 255, blue: 20 / 255, alpha: 1)
+        let appearance = UINavigationBarAppearance()
+        appearance.configureWithOpaqueBackground()
+        appearance.backgroundColor = cream
+        appearance.shadowColor = .clear
+        appearance.titleTextAttributes = [.font: display, .foregroundColor: ink]
+        appearance.largeTitleTextAttributes = [.font: UIFont(name: "Fraunces", size: 30) ?? display, .foregroundColor: ink]
+        UINavigationBar.appearance().standardAppearance = appearance
+        UINavigationBar.appearance().scrollEdgeAppearance = appearance
+        UINavigationBar.appearance().compactAppearance = appearance
         UIBarButtonItem.appearance().setTitleTextAttributes([.font: body], for: .normal)
         UIBarButtonItem.appearance().setTitleTextAttributes([.font: body], for: .highlighted)
         UISegmentedControl.appearance().setTitleTextAttributes([.font: caption], for: .normal)
@@ -39,21 +49,29 @@ struct RootView: View {
     var body: some View {
         ZStack {
             destination
-                .scaleEffect(1.08 - 0.08 * handoff)
-                .offset(y: 72 * (1 - handoff))
-            if showLaunch {
+                .offset(y: reduceMotion ? 0 : 12 * (1 - handoff))
+            if showLaunch, !reduceMotion {
                 LaunchSlide(crossed: crossed) { crossed = true }
-                    .scaleEffect(1 + handoff * 1.65, anchor: UnitPoint(x: 0.32, y: 0.56))
-                    .opacity(1 - max(0, (handoff - 0.42) / 0.58))
+                    .opacity(1 - handoff)
                     .allowsHitTesting(handoff == 0)
             }
         }
-        .onChange(of: crossed) { _, done in
-            guard done, !model.restoring else { return }
-            reveal()
+        .onAppear {
+            if reduceMotion {
+                handoff = 1
+                showLaunch = false
+                revealed = true
+            }
         }
-        .onChange(of: model.restoring) { _, restoring in
-            guard !restoring, crossed else { return }
+        .onChange(of: reduceMotion) { _, reduce in
+            if reduce {
+                handoff = 1
+                showLaunch = false
+                revealed = true
+            }
+        }
+        .onChange(of: crossed) { _, done in
+            guard done else { return }
             reveal()
         }
         .task { await model.restore() }
@@ -67,11 +85,9 @@ struct RootView: View {
             showLaunch = false
             return
         }
-        withAnimation(.timingCurve(0.15, 0.7, 0.2, 1, duration: 0.62)) {
+        withAnimation(.easeOut(duration: 0.22)) {
             handoff = 1
-        }
-        Task {
-            try? await Task.sleep(for: .milliseconds(640))
+        } completion: {
             showLaunch = false
         }
     }
@@ -80,7 +96,9 @@ struct RootView: View {
     private var destination: some View {
         Group {
             if model.restoring {
-                Theme.artwork
+                Color.clear
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .homeRunPage(road: false)
             } else if model.user == nil {
                 AuthView()
             } else if model.profile == nil {
@@ -103,6 +121,7 @@ struct RootView: View {
 struct MainTabs: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var termsTick = 0
 
     var body: some View {
         Group {
@@ -114,6 +133,12 @@ struct MainTabs: View {
         }
         .animation(reduceMotion ? nil : .snappy(duration: 0.35), value: model.side)
         .sensoryFeedback(.selection, trigger: model.side)
+        .overlay {
+            if let user = model.user, !DemoTerms.accepted(by: user.id) {
+                TermsGate(userId: user.id) { termsTick += 1 }
+            }
+        }
+        .id(termsTick)
         .task {
             while !Task.isCancelled {
                 await model.refreshBadges()
@@ -128,6 +153,8 @@ private struct OrderShell: View {
     @Environment(\.dynamicTypeSize) private var typeSize
     @State private var tab = Tab.home
     @State private var orderOnly = false
+    @Namespace private var tabSpace
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     enum Tab: Hashable { case home, discover, orders, profile }
 
@@ -178,6 +205,7 @@ private struct OrderShell: View {
             .padding(.bottom, 6)
             .background {
                 Theme.surface.overlay(PaperFiber(tone: Theme.maroon))
+                    .ignoresSafeArea(edges: .bottom)
             }
             .overlay(alignment: .top) { Hairline() }
         }
@@ -187,6 +215,12 @@ private struct OrderShell: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text("Choose deliver or both when you create an account to bring food.")
+        }
+        .onChange(of: model.requestedCustomerTab) { _, value in
+            if value == "discover" {
+                tab = .discover
+                model.requestedCustomerTab = nil
+            }
         }
     }
 
@@ -207,8 +241,16 @@ private struct OrderShell: View {
             .foregroundStyle(tab == value ? Theme.maroon : Theme.muted)
             .frame(maxWidth: .infinity, minHeight: 44)
             .padding(.vertical, 4)
+            .background {
+                if tab == value {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Theme.maroon.opacity(0.1))
+                        .matchedGeometryEffect(id: "order-tab", in: tabSpace)
+                }
+            }
         }
         .buttonStyle(.plain)
+        .animation(reduceMotion ? nil : .spring(duration: 0.32, bounce: 0.16), value: tab)
         .accessibilityLabel(badge > 0 ? "\(title), \(badge)" : title)
         .accessibilityAddTraits(tab == value ? .isSelected : [])
     }
@@ -218,6 +260,8 @@ private struct DriveShell: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dynamicTypeSize) private var typeSize
     @State private var section = DriveView.Section.requests
+    @Namespace private var tabSpace
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: 0) {
@@ -236,13 +280,19 @@ private struct DriveShell: View {
                                     .minimumScaleFactor(0.7)
                             }
                         }
-                        .foregroundStyle(section == item ? Theme.cream : Theme.roadMuted)
-                        .frame(maxWidth: .infinity)
+                        .foregroundStyle(section == item ? Color.white : Theme.muted)
+                        .frame(maxWidth: .infinity, minHeight: 44)
                         .padding(.vertical, 6)
-                        .background(section == item ? Theme.maroon : Color.clear)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .background {
+                            if section == item {
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .fill(Theme.maroon)
+                                    .matchedGeometryEffect(id: "drive-tab", in: tabSpace)
+                            }
+                        }
                     }
                     .buttonStyle(.plain)
+                    .animation(reduceMotion ? nil : .spring(duration: 0.32, bounce: 0.16), value: section)
                 }
                 if model.profile?.use != .deliver {
                     Button {
@@ -251,34 +301,34 @@ private struct DriveShell: View {
                         VStack(spacing: 4) {
                             Image(systemName: "bag.fill")
                             if !typeSize.isAccessibilitySize {
-                                Text("Order")
+                                Text("Get food")
                                     .font(Theme.text(.caption, weight: .bold))
                                     .lineLimit(1)
                                     .minimumScaleFactor(0.7)
                             }
                         }
-                        .foregroundStyle(Theme.maroon)
+                        .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
-                        .background(Theme.cream)
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .background(Theme.maroon)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PressStyle())
+                    .accessibilityLabel("Get food")
+                    .accessibilityHint("Opens the ordering side of Home Run")
                 }
             }
             .padding(.horizontal, 10)
-            .padding(.top, 10)
+            .padding(.top, 8)
             .padding(.bottom, 6)
             .background {
-                Theme.road.overlay(PaperFiber())
+                Theme.surface.overlay(PaperFiber(tone: Theme.maroon))
+                    .ignoresSafeArea(edges: .bottom)
             }
-            .overlay(alignment: .top) { Rectangle().fill(Color.white.opacity(0.16)).frame(height: 1) }
+            .overlay(alignment: .top) { Hairline() }
         }
-        .background {
-            Theme.road.overlay(PaperFiber())
-        }
-        .tint(.white)
+        .homeRunPage(road: false)
+        .tint(Theme.maroon)
         .environment(\.onTheRoad, true)
-        .environment(\.colorScheme, .dark)
     }
 }

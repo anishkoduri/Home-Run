@@ -13,14 +13,43 @@ final class AppModel {
     var profile: Profile?
     var restoring = true
     var restoreError: String?
+    var noticeBadge = 0
     var ordersBadge = 0
+    var repeatLines: [OrderLine] = []
+    var requestedCustomerTab: String?
     var driveBadge = 0
     var side = AppSide.ordering
+    var pickupCity: String
+    var pickupCityConfirmed: Bool
 
     enum AppSide: Equatable { case ordering, driving }
 
     init() {
         token = UserDefaults.standard.string(forKey: "token")
+        let stored = UserDefaults.standard.string(forKey: "homerun.pickupCity")
+        pickupCity = Places.city(named: stored ?? "")?.name ?? Places.origins[0].name
+        pickupCityConfirmed = UserDefaults.standard.bool(forKey: "homerun.pickupCityConfirmed")
+    }
+
+    func confirmPickupCity(_ name: String) {
+        let resolved = Places.city(named: name)
+        guard let resolved else { return }
+        pickupCity = resolved.name
+        pickupCityConfirmed = true
+        UserDefaults.standard.set(resolved.name, forKey: "homerun.pickupCity")
+        UserDefaults.standard.set(true, forKey: "homerun.pickupCityConfirmed")
+    }
+
+    func stageRepeat(_ lines: [OrderLine]) {
+        repeatLines = lines
+        side = .ordering
+        requestedCustomerTab = "discover"
+    }
+
+    func takeRepeatLines() -> [OrderLine] {
+        let lines = repeatLines
+        repeatLines = []
+        return lines
     }
 
     func client() throws -> APIClient {
@@ -56,6 +85,9 @@ final class AppModel {
         guard let rows: [AttentionRow] = try? await client.store("attention"), let user else { return }
         ordersBadge = rows.filter { $0.customerId == user.id && $0.status == "accepted" }.count
         driveBadge = rows.filter { $0.driverId == user.id && $0.status == "requested" }.count
+        if let count: InboxCount = try? await client.store("inbox-count") {
+            noticeBadge = count.notices + count.messages
+        }
     }
 
     private func apply(_ response: AuthResponse) {
@@ -67,11 +99,17 @@ final class AppModel {
         Task { await refreshBadges() }
     }
 
+    func useDemoActor(_ id: String) async throws {
+        let response: AuthResponse = try await client().store("demo-actor", method: "POST", body: DemoActorPick(id: id))
+        apply(response)
+    }
+
     private func signInDemo() async {
         do {
-            try await signIn(email: "1", password: "1")
+            try await signIn(email: "maya@demo.local", password: "demo")
         } catch {
-            restoreError = error.localizedDescription
+            do { try await signIn(email: "1", password: "1") }
+            catch { restoreError = error.localizedDescription }
         }
     }
 
@@ -86,6 +124,7 @@ final class AppModel {
         profile = nil
         ordersBadge = 0
         driveBadge = 0
+        noticeBadge = 0
     }
 }
 

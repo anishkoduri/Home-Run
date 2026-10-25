@@ -11,6 +11,7 @@ struct NewTripBody: Encodable {
         var departureAt: String
         var maxOrders: Int
         var notes: String?
+        var status: String? = nil
     }
 
     struct Stop: Encodable {
@@ -43,6 +44,29 @@ struct NewOrderBody: Encodable {
     var estimateSource: String?
     var estimatedArrivalAt: String?
     var customerNote: String?
+    var extraMeters: Double?
+    var extraSeconds: Double?
+    var weightPounds: Double?
+    var weightConfirmed: Bool?
+    var bulky: Bool?
+    var itemSummary: String?
+    var pickupReference: String?
+    var lines: [OrderLine]?
+    var operationKey: String? = nil
+}
+
+struct DeliveryPatch: Encodable {
+    var status: String
+    var pin: String?
+}
+
+struct MessageDraft: Encodable {
+    var orderId: String
+    var body: String
+}
+
+struct DemoActorPick: Encodable {
+    var id: String
 }
 
 struct StatusPatch: Encodable { var status: String }
@@ -60,4 +84,39 @@ struct ProfilePatch: Encodable {
     var paymentHandle: String?
 }
 
+struct DeclinePatch: Encodable {
+    var status: String
+    var declineReason: String
+}
+
+struct CounterPatch: Encodable {
+    var counterCents: Int
+    var counterReason: String
+}
+
+struct CounterDecision: Encodable {
+    var counterDecision: String
+}
+
+struct SavedRequestDraft: Encodable {
+    var city: String
+    var placeName: String?
+}
+
+struct SupportDraft: Encodable {
+    var orderId: String?
+    var category: String
+    var details: String
+}
+
+struct NoticeRead: Encodable {
+    var id: String?
+    var all: Bool?
+}
+
 struct TripStatusPatch: Encodable { var status: String }
+
+struct RepeatTrip: Encodable {
+    var tripId: String
+    var cadence: String
+}

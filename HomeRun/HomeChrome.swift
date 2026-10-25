@@ -82,7 +82,7 @@ struct FoodPlate: View {
                 ZStack {
                     Theme.maroonDark
                     Image(systemName: "bag.fill")
-                        .font(Theme.display(.title2))
+                        .font(Theme.text(.title2))
                         .foregroundStyle(.white)
                 }
             }
@@ -98,7 +98,7 @@ struct PlateSketch: View {
         ZStack {
             HomePlateShape().fill(Theme.maroon)
             Image(systemName: "bag.fill")
-                .font(Theme.display(.title3))
+                .font(Theme.text(.title3))
                 .foregroundStyle(.white)
                 .offset(y: -8)
                 .accessibilityHidden(true)
@@ -159,12 +159,12 @@ struct RouteSketch: View {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("FROM").font(Theme.text(.caption, weight: .bold)).foregroundStyle(Theme.muted)
-                    Text(origin).font(Theme.display(.title3)).foregroundStyle(Theme.ink)
+                    Text(origin).font(Theme.section(.title3)).foregroundStyle(Theme.ink)
                 }
                 Spacer(minLength: 12)
                 VStack(alignment: .trailing, spacing: 2) {
                     Text("TO").font(Theme.text(.caption, weight: .bold)).foregroundStyle(Theme.muted)
-                    Text(destination).font(Theme.display(.title3)).foregroundStyle(Theme.ink).multilineTextAlignment(.trailing)
+                    Text(destination).font(Theme.section(.title3)).foregroundStyle(Theme.ink).multilineTextAlignment(.trailing)
                 }
             }
             RouteDash()
@@ -208,5 +208,73 @@ struct TripSummary: View {
 struct Hairline: View {
     var body: some View {
         Rectangle().fill(Theme.line).frame(height: 1)
+    }
+}
+
+struct PageHeader: View {
+    var title: String
+    var detail: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(Theme.brand(.title))
+                .foregroundStyle(Theme.ink)
+                .fixedSize(horizontal: false, vertical: true)
+            if let detail {
+                Text(detail)
+                    .font(Theme.text(.subheadline))
+                    .foregroundStyle(Theme.muted)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 20)
+        .padding(.top, 6)
+        .padding(.bottom, 2)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+struct ChoiceBar<Value: Hashable>: View {
+    var options: [Value]
+    var label: (Value) -> String
+    @Binding var selection: Value
+    @Namespace private var space
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(options, id: \.self) { option in
+                Button {
+                    if reduceMotion {
+                        selection = option
+                    } else {
+                        withAnimation(.spring(duration: 0.32, bounce: 0.16)) {
+                            selection = option
+                        }
+                    }
+                } label: {
+                    Text(label(option))
+                        .font(Theme.text(.subheadline, weight: .semibold))
+                        .foregroundStyle(selection == option ? Color.white : Theme.ink)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .frame(maxWidth: .infinity, minHeight: 40)
+                        .background {
+                            if selection == option {
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .fill(Theme.maroon)
+                                    .matchedGeometryEffect(id: "choice", in: space)
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(selection == option ? .isSelected : [])
+            }
+        }
+        .padding(4)
+        .background(Theme.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.line))
     }
 }

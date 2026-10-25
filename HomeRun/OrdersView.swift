@@ -9,12 +9,9 @@ struct OrdersView: View {
     var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 12) {
-                Picker("Orders", selection: $past) {
-                    Text("Active").tag(false)
-                    Text("Past").tag(true)
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, 20)
+                PageHeader(title: "Orders", detail: past ? "Finished deliveries." : "Deliveries still in progress.")
+                ChoiceBar(options: [false, true], label: { $0 ? "Past" : "Active" }, selection: $past)
+                    .padding(.horizontal, 20)
                 if let error { ErrorBanner(message: error).padding(.horizontal, 20) }
                 if shown.isEmpty {
                     EmptyState(
@@ -35,6 +32,11 @@ struct OrdersView: View {
                                         .font(Theme.text(.subheadline))
                                         .foregroundStyle(Theme.muted)
                                 }
+                                if let summary = order.itemSummary {
+                                    Text(summary)
+                                        .font(Theme.text(.subheadline))
+                                        .foregroundStyle(Theme.muted)
+                                }
                                 Text("\(Format.shortId(order.id)) · \(Fees.money(order.deliveryFee))")
                                     .font(Theme.text(.subheadline, weight: .semibold))
                                     .foregroundStyle(Theme.ink)
@@ -52,7 +54,13 @@ struct OrdersView: View {
                 }
             }
             .homeRunPage(road: false)
+            .background(Theme.cream.ignoresSafeArea())
             .navigationTitle("Orders")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .navigationBar)
+            .toolbarBackground(Theme.cream, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarColorScheme(.light, for: .navigationBar)
             .navigationDestination(for: String.self) { OrderDetailView(id: $0) }
             .refreshable { await load() }
             .task { await watch { await load() } }

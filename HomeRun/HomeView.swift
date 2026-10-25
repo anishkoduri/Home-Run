@@ -12,6 +12,7 @@ struct HomeView: View {
     @State private var error: String?
     @State private var loaded = false
     @State private var expandedTripID: String?
+    @State private var showCities = false
 
     var body: some View {
         NavigationStack {
@@ -29,15 +30,24 @@ struct HomeView: View {
                     .padding(.bottom, 32)
                 }
             }
-            .background {
-                Theme.cream.overlay(PaperFiber(tone: Theme.maroon))
-            }
+            .background(Theme.cream)
             .toolbar(.hidden, for: .navigationBar)
             .toolbarBackground(Theme.maroon, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .navigationDestination(for: String.self) { OrderDetailView(id: $0) }
             .refreshable { await load() }
             .task { await watch { await load() } }
+            .onAppear {
+                if model.pickupCityConfirmed { city = model.pickupCity }
+                else { showCities = true }
+            }
+            .sheet(isPresented: $showCities) {
+                PickupCitySheet { name in
+                    city = name
+                    model.confirmPickupCity(name)
+                }
+            }
             .sensoryFeedback(.selection, trigger: expandedTripID)
         }
     }
@@ -46,16 +56,35 @@ struct HomeView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .center, spacing: 12) {
                 Text("Home Run")
-                    .font(Theme.display(.largeTitle))
+                    .font(Theme.brand(.largeTitle))
                     .foregroundStyle(.white)
                     .lineLimit(2)
                     .minimumScaleFactor(0.65)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 8)
+                NavigationLink {
+                    InboxView()
+                } label: {
+                    ZStack(alignment: .topTrailing) {
+                        Image(systemName: "bell")
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 44, height: 44)
+                        if model.noticeBadge > 0 {
+                            Text("\(model.noticeBadge)")
+                                .font(Theme.text(.caption2, weight: .bold))
+                                .foregroundStyle(Theme.maroon)
+                                .padding(4)
+                                .background(.white)
+                                .clipShape(Capsule())
+                        }
+                    }
+                }
+                .accessibilityLabel(model.noticeBadge > 0 ? "Notifications, \(model.noticeBadge) unread" : "Notifications")
                 Image("BrandMark")
                     .resizable()
                     .scaledToFit()
-                    .frame(width: typeSize.isAccessibilitySize ? 72 : 92, height: typeSize.isAccessibilitySize ? 72 : 92)
+                    .frame(width: typeSize.isAccessibilitySize ? 64 : 78, height: typeSize.isAccessibilitySize ? 64 : 78)
                     .accessibilityHidden(true)
             }
             .padding(.horizontal, 20)
@@ -65,22 +94,16 @@ struct HomeView: View {
             .background(Theme.maroon)
 
             VStack(alignment: .leading, spacing: 10) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Bring something home.")
-                        .font(Theme.text(.title3, weight: .semibold))
-                        .foregroundStyle(.white)
-                    Text("Food runs to College Station.")
-                        .font(Theme.text(.subheadline))
-                        .foregroundStyle(.white.opacity(0.9))
-                }
-                .accessibilityElement(children: .combine)
+                Text("Food runs to College Station.")
+                    .font(Theme.text(.subheadline))
+                    .foregroundStyle(.white.opacity(0.9))
                 photoBand
             }
             .padding(.horizontal, 20)
-            .padding(.bottom, 18)
+            .padding(.bottom, 14)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background {
-                Theme.maroon.overlay(PaperFiber())
+                Theme.maroon.overlay(PaperFiber(tone: .white))
             }
         }
         .background(Theme.maroon.ignoresSafeArea(edges: .top))
@@ -100,47 +123,27 @@ struct HomeView: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .frame(height: typeSize.isAccessibilitySize ? 96 : 132)
-        .clipShape(InkCard())
-        .overlay(InkCard().stroke(.white.opacity(0.85), lineWidth: 1.5))
+        .frame(height: typeSize.isAccessibilitySize ? 72 : 88)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(.white.opacity(0.7), lineWidth: 1))
         .accessibilityHidden(true)
     }
 
     private var pickupTitle: some View {
         Text("Find a pickup")
-            .font(Theme.display(.headline))
+            .font(Theme.section(.title3))
             .foregroundStyle(Theme.ink)
             .lineLimit(1)
             .minimumScaleFactor(0.85)
     }
 
-    private var cityMenu: some View {
-        Menu {
-            ForEach(Places.origins) { origin in
-                Button(origin.name) { city = origin.name }
-            }
-        } label: {
-            Text(city)
-                .font(Theme.text(.subheadline, weight: .semibold))
-                .foregroundStyle(Theme.maroon)
-                .lineLimit(1)
-        }
-        .accessibilityLabel("Restaurant city, \(city)")
-    }
-
     private var pickupBar: some View {
         VStack(alignment: .leading, spacing: 10) {
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .firstTextBaseline) {
-                    pickupTitle
-                    Spacer(minLength: 12)
-                    cityMenu
-                }
-                VStack(alignment: .leading, spacing: 4) {
-                    pickupTitle
-                    cityMenu
-                }
-            }
+            pickupTitle
+            PickupCityButton(city: city) { showCities = true }
+            Text("Delivering to College Station.")
+                .font(Theme.text(.caption))
+                .foregroundStyle(Theme.muted)
             HStack(spacing: 8) {
                 TextField("Restaurant or store", text: $query, prompt: Text("Restaurant or store").foregroundStyle(Theme.muted))
                     .focused($searchFocused)
@@ -165,9 +168,7 @@ struct HomeView: View {
         }
         .padding(16)
         .background(Theme.surface)
-        .clipShape(InkCard())
-        .overlay(InkCard().stroke(Theme.ink.opacity(0.28), lineWidth: 1.4))
-        .shadow(color: Theme.maroon.opacity(0.12), radius: 8, y: 3)
+        .sketchPanel()
         .padding(.horizontal, 16)
         .padding(.top, 14)
     }
@@ -178,7 +179,7 @@ struct HomeView: View {
         if !active.isEmpty {
             VStack(alignment: .leading, spacing: 0) {
                 Text("In motion")
-                    .font(Theme.display(.title3))
+                    .font(Theme.section())
                     .foregroundStyle(Theme.ink)
                     .padding(.bottom, 8)
                 ForEach(active) { order in
@@ -210,8 +211,8 @@ struct HomeView: View {
     private var upcoming: some View {
         VStack(alignment: .leading, spacing: 14) {
             StitchMark(tint: Theme.maroon.opacity(0.4))
-            Text("Heading to College Station")
-                .font(Theme.display(.title3))
+            Text("Trips to College Station")
+                .font(Theme.section())
                 .foregroundStyle(Theme.ink)
             if !loaded && error == nil {
                 ProgressView("Loading trips")
@@ -239,9 +240,9 @@ struct HomeView: View {
             GroceryBagSketch()
             VStack(alignment: .leading, spacing: 2) {
             Text("No trips yet.")
-                .font(Theme.display(.headline))
+                .font(Theme.section(.headline))
                 .foregroundStyle(Theme.ink)
-            Text("Driving back? Post your trip.")
+            Text("Driving back? Post a trip.")
                 .font(Theme.text(.subheadline))
                 .foregroundStyle(Theme.muted)
             if model.profile?.use != .order {
@@ -270,6 +271,7 @@ struct HomeView: View {
 }
 
 private struct TripLane: View {
+    @Environment(AppModel.self) private var model
     var trip: Trip
     var expanded: Bool
     var reduceMotion: Bool
@@ -293,6 +295,11 @@ private struct TripLane: View {
                             .foregroundStyle(Theme.muted)
                             .accessibilityHidden(true)
                     }
+                    if trip.driverId == model.user?.id {
+                        Text("Your trip.")
+                            .font(Theme.text(.caption, weight: .bold))
+                            .foregroundStyle(Theme.maroon)
+                    }
                     if let name = Format.personalName(trip.driver?.displayName) {
                         Text(name)
                             .font(Theme.text(.subheadline))
@@ -315,7 +322,8 @@ private struct TripLane: View {
             }
         }
         .padding(.horizontal, 16)
-        .sketchPanel()
+        .ticketPanel(open: expanded)
+        .animation(reduceMotion ? nil : .spring(duration: 0.35, bounce: 0.14), value: expanded)
     }
 
     private var spots: String {
@@ -327,6 +335,7 @@ private struct TripLane: View {
 }
 
 private struct TripRouteDetail: View {
+    @Environment(AppModel.self) private var model
     var trip: Trip
 
     var body: some View {
@@ -352,7 +361,7 @@ private struct TripRouteDetail: View {
             NavigationLink {
                 DiscoverView(initialCity: trip.originCity, initialQuery: "", focusTripID: trip.id, embedded: true)
             } label: {
-                Text("Find a pickup on this trip")
+                Text(trip.driverId == model.user?.id ? "Your trip" : "Find a pickup on this trip")
                     .font(Theme.text(.headline, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity, minHeight: 48)

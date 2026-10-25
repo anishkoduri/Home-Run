@@ -24,21 +24,33 @@ enum Theme {
     static let radiusControl: CGFloat = 14
     static let space: CGFloat = 20
 
-    /// Collegiate display. Family name inside Graduate-Regular.ttf (SIL OFL).
-    static func display(_ style: Font.TextStyle = .title2) -> Font {
-        .custom("Graduate", size: displaySize(style), relativeTo: style)
+    /// Brand and screen titles. Fraunces, SIL OFL. Not for buttons, prices, or section labels.
+    static func brand(_ style: Font.TextStyle = .largeTitle) -> Font {
+        .custom("Fraunces", size: brandSize(style), relativeTo: style).weight(.semibold)
     }
 
-    /// Body face. Variable Source Sans 3 (SIL OFL).
+    static func display(_ style: Font.TextStyle = .title2) -> Font {
+        brand(style)
+    }
+
+    /// Section headings, controls, and metadata. Source Sans 3, SIL OFL.
+    static func section(_ style: Font.TextStyle = .title3) -> Font {
+        text(style, weight: .semibold)
+    }
+
+    static func price(_ style: Font.TextStyle = .title3) -> Font {
+        text(style, weight: .bold)
+    }
+
     static func text(_ style: Font.TextStyle = .body, weight: Font.Weight = .regular) -> Font {
         .custom("Source Sans 3", size: textSize(style), relativeTo: style).weight(weight)
     }
 
-    private static func displaySize(_ style: Font.TextStyle) -> CGFloat {
+    private static func brandSize(_ style: Font.TextStyle) -> CGFloat {
         switch style {
-        case .largeTitle: return 40
-        case .title: return 32
-        case .title2: return 26
+        case .largeTitle: return 34
+        case .title: return 30
+        case .title2: return 24
         case .title3: return 22
         case .headline: return 20
         default: return 18
@@ -79,24 +91,27 @@ enum Haptics {
 
 /// Low-contrast fiber behind maroon. Deterministic so it does not shimmer while scrolling.
 struct PaperFiber: View {
-    var tone: Color = .white
+    var tone: Color = Theme.maroon
 
     var body: some View {
         Canvas { context, size in
-            var index = 0
-            let step: CGFloat = 8
-            var y: CGFloat = 2
-            while y < size.height {
-                var x: CGFloat = CGFloat((index * 5) % 11)
-                while x < size.width {
-                    let seed = Int(x) * 13 + Int(y) * 7
-                    let alpha = 0.035 + Double(seed % 5) * 0.008
-                    let rect = CGRect(x: x, y: y, width: 1.2, height: 1.2)
-                    context.fill(Path(ellipseIn: rect), with: .color(tone.opacity(alpha)))
-                    x += step
+            let area = size.width * size.height
+            let count = min(520, max(80, Int(area / 1400)))
+            for index in 0 ..< count {
+                var state = UInt32(index) &* 1_103_515_245 &+ 12_345
+                func unit() -> CGFloat {
+                    state = state &* 1_664_525 &+ 1_013_904_223
+                    return CGFloat(state % 10_000) / 10_000
                 }
-                y += step
-                index += 1
+                let x = unit() * size.width
+                let y = unit() * size.height
+                let length: CGFloat = index % 11 == 0 ? 14 + unit() * 18 : 2.5 + unit() * 6
+                let angle = unit() * .pi
+                var path = Path()
+                path.move(to: CGPoint(x: x, y: y))
+                path.addLine(to: CGPoint(x: x + cos(angle) * length, y: y + sin(angle) * length))
+                let alpha = 0.045 + Double(unit()) * 0.07
+                context.stroke(path, with: .color(tone.opacity(alpha)), lineWidth: index % 11 == 0 ? 0.8 : 0.55)
             }
         }
         .allowsHitTesting(false)
@@ -149,7 +164,7 @@ struct Card<Content: View>: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Theme.surface)
             .clipShape(RoundedRectangle(cornerRadius: Theme.radiusCard, style: .continuous))
-            .overlay(InkCard().stroke(Theme.ink.opacity(0.22), lineWidth: 1.2))
+            .overlay(RoundedRectangle(cornerRadius: Theme.radiusCard, style: .continuous).stroke(Theme.line))
             .shadow(color: Theme.ink.opacity(0.05), radius: 12, y: 6)
     }
 }
@@ -266,7 +281,7 @@ struct EmptyState: View {
         HStack(alignment: .center, spacing: 12) {
             GroceryBagSketch(ink: ink)
             VStack(alignment: .leading, spacing: 6) {
-                Text(title).font(Theme.display(.headline))
+                Text(title).font(Theme.section(.headline))
                 Text(message).font(Theme.text(.subheadline)).foregroundStyle(Theme.muted)
             }
         }
@@ -288,24 +303,43 @@ struct HomeRunPage: ViewModifier {
         content
             .scrollContentBackground(.hidden)
             .background {
-                if useRoad {
-                    Theme.road.overlay(PaperFiber())
-                } else {
-                    Theme.cream.overlay(PaperFiber(tone: Theme.maroon))
+                Group {
+                    if useRoad {
+                        Theme.road.overlay(PaperFiber(tone: .white))
+                    } else {
+                        Theme.cream.overlay(PaperFiber(tone: Theme.maroon))
+                    }
                 }
+                .ignoresSafeArea()
             }
     }
 }
 
 struct SketchBackdrop: ViewModifier {
     var fill: Color = Theme.surface
-    var ink: Color = Theme.ink.opacity(0.28)
+    var ink: Color = Theme.line
 
     func body(content: Content) -> some View {
         content
             .background(fill)
-            .clipShape(InkCard())
-            .overlay(InkCard().stroke(ink, lineWidth: 1.3))
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(ink, lineWidth: 1))
+            .shadow(color: Theme.ink.opacity(0.04), radius: 8, y: 3)
+    }
+}
+
+struct TicketBackdrop: ViewModifier {
+    var open: Bool = false
+
+    func body(content: Content) -> some View {
+        content
+            .background(Theme.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(alignment: .leading) {
+                Rectangle().fill(Theme.maroon).frame(width: 4)
+            }
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Theme.line, lineWidth: 1))
+            .shadow(color: Theme.ink.opacity(open ? 0.12 : 0.05), radius: open ? 14 : 8, y: open ? 6 : 3)
     }
 }
 
@@ -315,8 +349,12 @@ extension View {
         modifier(HomeRunPage(road: road))
     }
 
-    func sketchPanel(fill: Color = Theme.surface, ink: Color = Theme.ink.opacity(0.28)) -> some View {
+    func sketchPanel(fill: Color = Theme.surface, ink: Color = Theme.line) -> some View {
         modifier(SketchBackdrop(fill: fill, ink: ink))
+    }
+
+    func ticketPanel(open: Bool = false) -> some View {
+        modifier(TicketBackdrop(open: open))
     }
 }
 

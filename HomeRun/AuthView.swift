@@ -23,8 +23,11 @@ struct AuthView: View {
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Home Run")
-                            .font(Theme.display(.title2))
+                            .font(Theme.brand(.title2))
                             .foregroundStyle(.white)
+                        Text("By Aggies, for Aggies.")
+                            .font(Theme.text(.caption, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.9))
                         Text(mode == .signIn ? "Sign in" : "Create an account")
                             .font(Theme.text(.subheadline))
                             .foregroundStyle(.white.opacity(0.85))
@@ -39,7 +42,7 @@ struct AuthView: View {
                 .padding(.top, -24)
 
                 Text("Bring something home.")
-                    .font(Theme.display(.title2))
+                    .font(Theme.section(.title2))
                     .foregroundStyle(Theme.ink)
                 Text("Food runs to College Station.")
                     .font(Theme.text(.subheadline))
@@ -82,6 +85,10 @@ struct AuthView: View {
                 }
                 .fontWeight(.bold)
                 .frame(maxWidth: .infinity)
+                if mode == .signIn {
+                    Button("Forgot password") { error = "No email was sent. This demo keeps the password on this phone." }
+                        .font(Theme.text(.caption, weight: .semibold))
+                }
                 Text("Student-run project. Not affiliated with any university. Accounts stay on this phone.")
                     .font(Theme.text(.caption2))
                     .foregroundStyle(Theme.muted)
@@ -90,6 +97,7 @@ struct AuthView: View {
             .padding(24)
         }
         .homeRunPage(road: false)
+        .background(Theme.cream.ignoresSafeArea())
     }
 
     private func field(_ title: String, text: Binding<String>) -> some View {

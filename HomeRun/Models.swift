@@ -2,7 +2,7 @@ import Foundation
 
 enum OrderStatus: String, Codable, CaseIterable {
     case requested, accepted, restaurantConfirmed = "restaurant_confirmed"
-    case pickedUp = "picked_up", onTheWay = "on_the_way", delivered, declined, cancelled
+    case pickedUp = "picked_up", onTheWay = "on_the_way", arriving, delivered, declined, cancelled
 
     var label: String {
         switch self {
@@ -11,6 +11,7 @@ enum OrderStatus: String, Codable, CaseIterable {
         case .restaurantConfirmed: return "Restaurant order confirmed"
         case .pickedUp: return "Picked up"
         case .onTheWay: return "On the way"
+        case .arriving: return "Arriving"
         case .delivered: return "Delivered"
         case .declined: return "Declined"
         case .cancelled: return "Cancelled"
@@ -27,15 +28,16 @@ enum OrderStatus: String, Codable, CaseIterable {
     }
 
     var isTerminal: Bool { self == .delivered || self == .declined || self == .cancelled }
-    var isActiveDelivery: Bool { self == .accepted || self == .restaurantConfirmed || self == .pickedUp || self == .onTheWay }
+    var isActiveDelivery: Bool { self == .accepted || self == .restaurantConfirmed || self == .pickedUp || self == .onTheWay || self == .arriving }
 
     enum Tone { case pending, active, completed, closed }
 
     var driverNext: (OrderStatus, String)? {
         switch self {
         case .restaurantConfirmed: return (.pickedUp, "Mark picked up")
-        case .pickedUp: return (.onTheWay, "Mark on the way")
-        case .onTheWay: return (.delivered, "Mark delivered")
+        case .pickedUp: return (.onTheWay, "Start travel")
+        case .onTheWay: return (.arriving, "I'm arriving")
+        case .accepted: return (.restaurantConfirmed, "Confirm pickup")
         default: return nil
         }
     }
@@ -77,6 +79,9 @@ struct Profile: Codable, Equatable, Identifiable {
     var paymentHandle: String?
     var createdAt: String?
     var intent: String?
+    var termsVersion: String? = nil
+    var termsAcceptedAt: String? = nil
+    var notify: Bool? = nil
 
     var use: AccountUse { AccountUse(rawValue: intent ?? "") ?? .both }
 }
@@ -90,6 +95,9 @@ struct TripStop: Codable, Identifiable, Equatable {
     var lat: Double
     var lng: Double
     var stopOrder: Int
+    var kind: String? = nil
+    var available: Bool? = nil
+    var arrivesAt: String? = nil
 }
 
 struct Trip: Codable, Identifiable, Equatable {
@@ -105,6 +113,17 @@ struct Trip: Codable, Identifiable, Equatable {
     var maxOrders: Int
     var notes: String?
     var status: String
+    var cutoffAt: String? = nil
+    var maxItemPounds: Double? = nil
+    var maxTotalPounds: Double? = nil
+    var allowsCustom: Bool? = nil
+    var maxDetourMinutes: Double? = nil
+    var maxDetourMiles: Double? = nil
+    var recurrence: String? = nil
+    var templateId: String? = nil
+    /// Set when this generated date was edited on its own. Series updates leave it alone.
+    var occurrenceEdited: Bool? = nil
+    var etaAt: String? = nil
     var createdAt: String
     var driver: Profile?
     var stops: [TripStop]?
@@ -132,6 +151,21 @@ struct Order: Codable, Identifiable, Equatable {
     var estimateSource: String?
     var estimatedArrivalAt: String?
     var customerNote: String?
+    var itemSummary: String?
+    var quoteCents: Int?
+    var runnerShareCents: Int?
+    var quoteState: String?
+    var quoteExpiresAt: String? = nil
+    var operationKey: String? = nil
+    var weightPounds: Double? = nil
+    var counterCents: Int? = nil
+    var counterReason: String? = nil
+    var counterExpiresAt: String? = nil
+    var previousQuoteCents: Int? = nil
+    var declineReason: String? = nil
+    var lines: [OrderLine]? = nil
+    var confirmationPin: String?
+    var pinAttempts: Int?
     var pickupName: String?
     var restaurantOrderNumber: String?
     var pickupReadyAt: String?
@@ -168,6 +202,15 @@ struct Place: Codable, Identifiable, Equatable {
     var ratingCount: Int?
     var website: String?
     var mapsUrl: String?
+    /// Places API (New) photo resource name. Not a public image URL and not stored as a licensed asset.
+    var photoName: String?
+    /// Additional Places photo resource names for the gallery. Not durable licensed assets.
+    var photoNames: [String]? = nil
+    var photoCredit: String?
+    /// google, osm, or sample. Sample places are fictional offline listings.
+    var contentSource: String?
+    var category: String?
+    var outsideCity: Bool?
     var id: String { placeId }
 }
 
@@ -196,4 +239,39 @@ struct SessionResponse: Codable {
 
 struct ProfileEnvelope: Codable { var profile: Profile? }
 struct OrderEnvelope: Codable { var order: Order? }
+
+struct OrderLine: Codable, Equatable, Identifiable {
+    var id: String
+    var name: String
+    var quantity: Int
+    var weightPounds: Double?
+    var weightConfirmed: Bool
+    var bulky: Bool
+    var fragile: Bool
+    var note: String?
+}
+
+struct InboxCount: Codable {
+    var notices: Int
+    var messages: Int
+}
+
+struct OrderMessage: Codable, Identifiable, Equatable {
+    var id: String
+    var orderId: String
+    var senderId: String
+    var body: String
+    var createdAt: String
+    var seenBy: [String]? = nil
+}
+
+struct MessageList: Codable { var messages: [OrderMessage] }
+
+struct DemoActor: Codable, Identifiable, Equatable {
+    var id: String
+    var name: String
+    var detail: String
+}
+
+struct DemoActorList: Codable { var actors: [DemoActor] }
 struct PlaceSearchResponse: Codable { var source: String; var places: [Place] }

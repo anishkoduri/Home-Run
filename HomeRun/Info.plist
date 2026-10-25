@@ -4,11 +4,17 @@
 <dict>
 	<key>UIAppFonts</key>
 	<array>
-		<string>Graduate-Regular.ttf</string>
+		<string>Fraunces[SOFT,WONK,opsz,wght].ttf</string>
 		<string>SourceSans3[wght].ttf</string>
 	</array>
+	<key>GOOGLE_MAPS_IOS_API_KEY</key>
+	<string>$(GOOGLE_MAPS_IOS_API_KEY)</string>
+	<key>GOOGLE_PLACES_API_KEY</key>
+	<string>$(GOOGLE_PLACES_API_KEY)</string>
+	<key>GOOGLE_ROUTES_API_KEY</key>
+	<string>$(GOOGLE_ROUTES_API_KEY)</string>
 	<key>GOOGLE_MAPS_API_KEY</key>
-	<string></string>
+	<string>$(GOOGLE_MAPS_API_KEY)</string>
 	<key>UILaunchScreen</key>
 	<dict>
 		<key>UIColorName</key>

@@ -5,28 +5,92 @@ actor PlaceSearch {
 
     private var cache: [String: (at: Date, value: Data)] = [:]
 
-    func search(query: String, city: String, restaurantsOnly: Bool) async throws -> PlaceSearchResponse {
+    func search(query: String, city: String, restaurantsOnly: Bool, category: String = "all") async throws -> PlaceSearchResponse {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if DemoRouteFixture.forcesSamples {
+            return PlaceSearchResponse(source: "sample", places: Self.samples(city: city, category: category, query: q))
+        }
+        if q.isEmpty {
+            return try await discover(city: city, category: category)
+        }
         guard q.count >= 2, q.count <= 80 else { throw APIError(message: "Enter 2–80 characters.", code: "bad_request") }
-        let key = "\(restaurantsOnly)|\(city)|\(q.lowercased())"
-        if let hit = cache[key], Date().timeIntervalSince(hit.at) < 30 * 60,
+        let cacheKey = "\(restaurantsOnly)|\(category)|\(city)|\(q.lowercased())"
+        if let hit = cache[cacheKey], Date().timeIntervalSince(hit.at) < 30 * 60,
            let cached = try? JSONDecoder().decode(PlaceSearchResponse.self, from: hit.value) {
             return cached
         }
-        let text = restaurantsOnly ? "\(q) in \(city), TX" : "\(q), \(city), TX"
+        let text = restaurantsOnly ? "\(q) in \(city), Texas" : "\(q), \(city), Texas"
         let bias = Self.bias(for: city)
-        var response: PlaceSearchResponse?
-        if let key = Self.googleKey {
-            response = try? await Self.google(text: text, bias: bias, key: key)
-            if response?.places.isEmpty == true { response = nil }
-        }
-        if response == nil {
-            response = try await Self.openStreetMap(text: text, bias: bias, restaurantsOnly: restaurantsOnly)
+        let response: PlaceSearchResponse
+        if let key = Self.placesKey, restaurantsOnly {
+            response = try await Self.google(text: text, bias: bias, city: city, key: key)
+        } else if restaurantsOnly {
+            let samples = Self.samples(city: city, category: category, query: q)
+            if samples.isEmpty {
+                response = try await Self.openStreetMap(text: text, bias: bias, restaurantsOnly: true)
+            } else {
+                response = PlaceSearchResponse(source: "sample", places: samples)
+            }
+        } else {
+            response = try await Self.openStreetMap(text: text, bias: bias, restaurantsOnly: false)
         }
         let data = try JSONEncoder().encode(response)
-        cache[key] = (Date(), data)
-        return response ?? PlaceSearchResponse(source: "osm", places: [])
+        cache[cacheKey] = (Date(), data)
+        return response
     }
+
+    func discover(city: String, category: String) async throws -> PlaceSearchResponse {
+        if DemoRouteFixture.forcesSamples {
+            return PlaceSearchResponse(source: "sample", places: Self.samples(city: city, category: category, query: ""))
+        }
+        let cacheKey = "discover|\(category)|\(city.lowercased())"
+        if let hit = cache[cacheKey], Date().timeIntervalSince(hit.at) < 30 * 60,
+           let cached = try? JSONDecoder().decode(PlaceSearchResponse.self, from: hit.value) {
+            return cached
+        }
+        let response: PlaceSearchResponse
+        if let key = Self.placesKey {
+            let text = Self.discoveryQuery(category: category, city: city)
+            response = try await Self.google(text: text, bias: Self.bias(for: city), city: city, key: key)
+        } else {
+            response = PlaceSearchResponse(source: "sample", places: Self.samples(city: city, category: category, query: ""))
+        }
+        let data = try JSONEncoder().encode(response)
+        cache[cacheKey] = (Date(), data)
+        return response
+    }
+
+    /// Loads photo bytes for a Places API (New) resource name. The URL is not kept.
+    func photoData(resourceName: String) async throws -> Data {
+        if let cached = photoCache[resourceName] { return cached }
+        guard let key = Self.placesKey else {
+            throw APIError(message: "A photo isn't available.", code: "no_photo")
+        }
+        var parts = URLComponents(string: "https://places.googleapis.com/v1/\(resourceName)/media")!
+        parts.queryItems = [
+            URLQueryItem(name: "maxHeightPx", value: "480"),
+            URLQueryItem(name: "maxWidthPx", value: "480"),
+            URLQueryItem(name: "skipHttpRedirect", value: "true"),
+        ]
+        var request = URLRequest(url: parts.url!)
+        Self.authorize(&request, key: key)
+        let (data, raw) = try await URLSession.shared.data(for: request)
+        guard let http = raw as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw APIError(message: "A photo isn't available.", code: "photo_failed")
+        }
+        let media = try JSONDecoder().decode(GooglePhotoMedia.self, from: data)
+        guard let uri = media.photoUri, let url = URL(string: uri) else {
+            throw APIError(message: "A photo isn't available.", code: "photo_failed")
+        }
+        let (bytes, imageResponse) = try await URLSession.shared.data(from: url)
+        guard let imageHTTP = imageResponse as? HTTPURLResponse, (200..<300).contains(imageHTTP.statusCode), !bytes.isEmpty else {
+            throw APIError(message: "A photo isn't available.", code: "photo_failed")
+        }
+        photoCache[resourceName] = bytes
+        return bytes
+    }
+
+    private var photoCache: [String: Data] = [:]
 
     func detour(_ body: DetourRequest) async throws -> DetourEstimate {
         let stops = Array(body.stops.prefix(8))
@@ -55,11 +119,22 @@ actor PlaceSearch {
 
     private func route(_ points: [LatLng]) async throws -> Leg {
         guard points.count >= 2 else { throw APIError(message: "No driving route found.", code: "no_route") }
-        if let key = Self.googleKey, let leg = try? await Self.googleRoute(points, key: key) { return leg }
+        if let key = Self.routesKey {
+            return try await Self.googleRoute(points, key: key)
+        }
         return try await Self.osrm(points)
     }
 
-    private static func google(text: String, bias: CityBias?, key: String) async throws -> PlaceSearchResponse {
+    private static func discoveryQuery(category: String, city: String) -> String {
+        switch category {
+        case "food": return "restaurants in \(city), Texas"
+        case "groceries": return "grocery stores in \(city), Texas"
+        case "stores": return "stores in \(city), Texas"
+        default: return "restaurants groceries and stores in \(city), Texas"
+        }
+    }
+
+    private static func google(text: String, bias: CityBias?, city: String, key: String) async throws -> PlaceSearchResponse {
         var payload: [String: Any] = ["textQuery": text, "pageSize": 20, "regionCode": "US"]
         if let bias {
             payload["locationBias"] = [
@@ -74,26 +149,35 @@ actor PlaceSearch {
         request.httpMethod = "POST"
         request.httpBody = data
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(key, forHTTPHeaderField: "X-Goog-Api-Key")
-        request.setValue("places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.websiteUri,places.googleMapsUri", forHTTPHeaderField: "X-Goog-FieldMask")
+        Self.authorize(&request, key: key)
+        request.setValue("places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.websiteUri,places.googleMapsUri,places.photos,places.primaryTypeDisplayName", forHTTPHeaderField: "X-Goog-FieldMask")
         let (response, raw) = try await URLSession.shared.data(for: request)
         guard let http = raw as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw APIError(message: "Google Places is unavailable right now.", code: "provider_error")
+            throw APIError(message: "Search isn't available right now.", code: "provider_error")
         }
         let decoded = try JSONDecoder().decode(GooglePlaces.self, from: response)
         let places = (decoded.places ?? []).compactMap { place -> Place? in
             guard let lat = place.location?.latitude, let lng = place.location?.longitude else { return nil }
             let website = place.websiteUri.flatMap { $0.hasPrefix("http://") || $0.hasPrefix("https://") ? $0 : nil }
+            let names = place.photos?.compactMap(\.name).prefix(5)
+            let photo = place.photos?.first
+            let address = place.formattedAddress ?? ""
             return Place(
                 placeId: place.id,
                 name: place.displayName?.text ?? "Unnamed place",
-                address: place.formattedAddress ?? "",
+                address: address,
                 lat: lat,
                 lng: lng,
                 rating: place.rating,
                 ratingCount: place.userRatingCount,
                 website: website,
-                mapsUrl: place.googleMapsUri
+                mapsUrl: place.googleMapsUri,
+                photoName: photo?.name,
+                photoNames: names.map(Array.init),
+                photoCredit: photo?.authorAttributions?.first?.displayName,
+                contentSource: "google",
+                category: place.primaryTypeDisplayName?.text,
+                outsideCity: address.isEmpty ? nil : !Places.address(address, matches: city)
             )
         }
         return PlaceSearchResponse(source: "google", places: places)
@@ -149,10 +233,44 @@ actor PlaceSearch {
                 rating: nil,
                 ratingCount: nil,
                 website: website,
-                mapsUrl: "https://www.openstreetmap.org/\(osmType)/\(osmId)"
+                mapsUrl: "https://www.openstreetmap.org/\(osmType)/\(osmId)",
+                contentSource: "osm"
             )
         }
         return PlaceSearchResponse(source: "osm", places: places)
+    }
+
+    func lookupTexasCity(_ name: String) async throws -> City {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let known = Places.city(named: trimmed) { return known }
+        guard trimmed.count >= 2, trimmed.count <= 80 else {
+            throw APIError(message: "Enter a Texas city.", code: "bad_request")
+        }
+        var parts = URLComponents(string: "https://nominatim.openstreetmap.org/search")!
+        parts.queryItems = [
+            URLQueryItem(name: "q", value: "\(trimmed), Texas, USA"),
+            URLQueryItem(name: "format", value: "jsonv2"),
+            URLQueryItem(name: "limit", value: "5"),
+            URLQueryItem(name: "countrycodes", value: "us"),
+            URLQueryItem(name: "addressdetails", value: "1"),
+        ]
+        var request = URLRequest(url: parts.url!)
+        request.setValue("HomeRun/1.0 (student food delivery)", forHTTPHeaderField: "User-Agent")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+              let rows = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+            throw APIError(message: "City lookup is unavailable right now.", code: "provider_error")
+        }
+        guard let row = rows.first(where: { ($0["display_name"] as? String)?.localizedCaseInsensitiveContains("Texas") == true }),
+              let lat = Double(row["lat"] as? String ?? ""),
+              let lng = Double(row["lon"] as? String ?? "") else {
+            throw APIError(message: "That didn't match a Texas city.", code: "bad_request")
+        }
+        let address = row["address"] as? [String: Any]
+        let resolved = (address?["city"] as? String) ?? (address?["town"] as? String) ?? (address?["village"] as? String) ?? trimmed
+        let city = City(name: resolved, lat: lat, lng: lng)
+        Places.remember(city)
+        return city
     }
 
     private static func googleRoute(_ points: [LatLng], key: String) async throws -> Leg {
@@ -171,11 +289,11 @@ actor PlaceSearch {
         request.httpMethod = "POST"
         request.httpBody = try JSONSerialization.data(withJSONObject: payload)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(key, forHTTPHeaderField: "X-Goog-Api-Key")
+        Self.authorize(&request, key: key)
         request.setValue("routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline", forHTTPHeaderField: "X-Goog-FieldMask")
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw APIError(message: "Google routing is unavailable right now.", code: "provider_error")
+            throw APIError(message: "A road route isn't available right now.", code: "provider_error")
         }
         let decoded = try JSONDecoder().decode(GoogleRoutes.self, from: data)
         guard let route = decoded.routes?.first, let encoded = route.polyline?.encodedPolyline else {
@@ -232,6 +350,52 @@ actor PlaceSearch {
         return path
     }
 
+    /// Fictional listings for offline presentation. Not Google results and not merchant partnerships.
+    private static func samples(city: String, category: String, query: String) -> [Place] {
+        let needle = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return sampleCatalog.filter { place in
+            guard place.address.localizedCaseInsensitiveContains(city) || Places.aliases(for: city).contains(where: { place.address.localizedCaseInsensitiveContains($0) }) else { return false }
+            if category == "food", place.category != "food" { return false }
+            if category == "groceries", place.category != "groceries" { return false }
+            if category == "stores", place.category != "stores" { return false }
+            if needle.isEmpty { return true }
+            return place.name.lowercased().contains(needle) || (place.category ?? "").contains(needle)
+        }
+    }
+
+    private static let sampleCatalog: [Place] = [
+        sample("bayou-bowl", "Bayou Bowl Kitchen", "Sample address, Houston, TX", 29.743, -95.369, "food"),
+        sample("bayou-coffee", "Bayou Coffee Counter", "Sample address, Houston, TX", 29.752, -95.358, "food"),
+        sample("bayou-market", "Bayou Market", "Sample address, Houston, TX", 29.735, -95.390, "groceries"),
+        sample("north-pantry", "North Loop Pantry", "Sample address, Dallas, TX", 32.802, -96.790, "groceries"),
+        sample("north-sandwich", "North Loop Sandwich Co.", "Sample address, Dallas, TX", 32.788, -96.780, "food"),
+        sample("north-supply", "North Loop Supply", "Sample address, Dallas, TX", 32.770, -96.810, "stores"),
+        sample("cedar-market", "Cedar Trail Market", "Sample address, Austin, TX", 30.275, -97.752, "groceries"),
+        sample("cedar-kitchen", "Cedar Trail Kitchen", "Sample address, Austin, TX", 30.260, -97.735, "food"),
+        sample("cedar-goods", "Cedar Trail Goods", "Sample address, Austin, TX", 30.250, -97.760, "stores"),
+        sample("mission-table", "Mission Table", "Sample address, San Antonio, TX", 29.418, -98.486, "food"),
+        sample("mission-pantry", "Mission Pantry", "Sample address, San Antonio, TX", 29.432, -98.500, "groceries"),
+    ]
+
+    private static func sample(_ id: String, _ name: String, _ address: String, _ lat: Double, _ lng: Double, _ category: String) -> Place {
+        Place(
+            placeId: "sample:\(id)",
+            name: name,
+            address: address,
+            lat: lat,
+            lng: lng,
+            rating: nil,
+            ratingCount: nil,
+            website: nil,
+            mapsUrl: nil,
+            photoName: nil,
+            photoCredit: nil,
+            contentSource: "sample",
+            category: category,
+            outsideCity: false
+        )
+    }
+
     private static func bias(for city: String) -> CityBias? {
         if let match = Places.origins.first(where: { $0.name == city }) {
             return CityBias(lat: match.lat, lng: match.lng, radius: 45_000)
@@ -242,10 +406,14 @@ actor PlaceSearch {
         return nil
     }
 
-    private static var googleKey: String? {
-        let value = (Bundle.main.object(forInfoDictionaryKey: "GOOGLE_MAPS_API_KEY") as? String)?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return value.isEmpty ? nil : value
+    private static var placesKey: String? { GoogleCredentials.placesKey }
+    private static var routesKey: String? { GoogleCredentials.routesKey }
+
+    private static func authorize(_ request: inout URLRequest, key: String) {
+        request.setValue(key, forHTTPHeaderField: "X-Goog-Api-Key")
+        if let bundle = Bundle.main.bundleIdentifier, !bundle.isEmpty {
+            request.setValue(bundle, forHTTPHeaderField: "X-Ios-Bundle-Identifier")
+        }
     }
 
     private static func thin(_ path: [[Double]], max: Int = 120) -> [[Double]] {
@@ -291,6 +459,21 @@ private struct GooglePlace: Decodable {
     var userRatingCount: Int?
     var websiteUri: String?
     var googleMapsUri: String?
+    var photos: [GooglePhoto]?
+    var primaryTypeDisplayName: GoogleText?
+}
+
+private struct GooglePhoto: Decodable {
+    var name: String?
+    var authorAttributions: [GoogleAuthor]?
+}
+
+private struct GoogleAuthor: Decodable {
+    var displayName: String?
+}
+
+private struct GooglePhotoMedia: Decodable {
+    var photoUri: String?
 }
 
 private struct GoogleText: Decodable { var text: String? }

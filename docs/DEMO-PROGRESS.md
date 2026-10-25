@@ -1,0 +1,95 @@
+# Home Run demo progress
+
+Updated after the gallery, bookmark, trip-edit, receipt, filter, earnings-period, and recurrence-preview pass. This file is a checkpoint, not a claim that the full specification is finished. Live Google checks and tapped simulator journeys stay pending. `xcodebuild test` scheme HomeRun, iPhone 17, derived data `/tmp/HomeRunDD`: TEST SUCCEEDED. That run includes `JourneyTests.aPublishedTripReachesTheAssignedRunner` and `JourneyTests.bookmarksAndTripEditsUseTheSameStore`.
+
+## Where to paste the Maps SDK key
+
+Paste it locally in `Config/Local.xcconfig`, on the `GOOGLE_MAPS_IOS_API_KEY` line, after the equals sign. No quotes. That file is listed in `.gitignore`. Do not paste the key into `HomeRun/Info.plist`, Swift source, or chat.
+
+The HomeRun target loads `Config/Shared.xcconfig` for Debug and Release. That file includes `Local.xcconfig` when it exists and writes the values into the built Info.plist as `GOOGLE_MAPS_IOS_API_KEY`, `GOOGLE_PLACES_API_KEY`, `GOOGLE_ROUTES_API_KEY`, and the legacy `GOOGLE_MAPS_API_KEY`. `HomeRunApp.init` calls `GoogleMapsStartup.start()` before any screen. A missing or blank key does not call the Maps SDK, and the existing Apple map stays.
+
+`GoogleCredentials` never prints a key. Profile shows only “configured” or “missing” in Debug builds.
+
+## What each Google call actually is
+
+There is no backend and no Places SDK.
+
+| Capability | Implementation | Key field | Cloud API restriction | Application restriction |
+| --- | --- | --- | --- | --- |
+| Map tiles | Maps SDK for iOS (`GoogleMaps`), `GMSServices.provideAPIKey` in `HomeRunApp.init`, `GoogleRouteMap` | `GOOGLE_MAPS_IOS_API_KEY` | Maps SDK for iOS | iOS apps, bundle ID `com.homerun.ios` |
+| Restaurant search and place photos | Direct REST to Places API (New): `places.googleapis.com/v1/places:searchText` and `places.googleapis.com/v1/{photo}/media` in `HomeRun/Places.swift` | `GOOGLE_PLACES_API_KEY` | Places API (New) | iOS apps, same bundle ID. The app sends `X-Ios-Bundle-Identifier`. |
+| Road distance and duration | Direct REST to Routes API: `routes.googleapis.com/directions/v2:computeRoutes` in `HomeRun/Places.swift` | `GOOGLE_ROUTES_API_KEY` | Routes API | iOS apps, same bundle ID, plus the same bundle header |
+
+The Maps SDK key does not authorize Places or Routes. Leave those two lines blank until separate keys allow those APIs. Search then stays on the labeled sample catalog. Routing stays on OSRM. The legacy `GOOGLE_MAPS_API_KEY` still feeds all three if it is set, so an older single key keeps working. Do not put a Maps-SDK-only key in that legacy field.
+
+## Requirement map
+
+| Area | Status | Evidence |
+| --- | --- | --- |
+| Gitignored local keys, Maps SDK init, Places and Routes REST split | Implemented. Live in-app checks still pending | `Config/Shared.xcconfig`, `HomeRun/GoogleCredentials.swift`, `HomeRun/Places.swift` |
+| Pickup city before search, sample catalog only when the Places key is absent | Implemented. In-app Google results are not marked passed | `HomeRun/DiscoverView.swift`, `HomeRun/PlacePhoto.swift` |
+| Cents pricing, 80% share, shared-stop discount defined and off, over 30 extra minutes reviews | Implemented and unit-tested | `HomeRun/PricingPolicy.swift`, `HomeRunTests/` |
+| Demo people, including Taylor Brooks in demo tools only, clock, Houston/Dallas/Austin trips, detour and weight limits | Implemented in the on-device store | `HomeRun/Store.swift` |
+| Quote, submit, accept, PIN, messages, simulated share | Store journey test passed. Not tapped in the simulator | `HomeRunTests/JourneyTests.swift` |
+| Counteroffer, decline reason, quote expiry, cancellation release/refund, append-only ledger, support refund, payout | Rules unit-tested. Journey test covers capture, one earning, and a failed second accept | `HomeRun/DemoRules.swift`, `HomeRun/Store.swift` |
+| Multi-item lines, trip publish/draft/close/reopen/start/complete, arrival code, unread bell count | Implemented. Journey test checks item name, quantity, draft privacy, arrival PIN hidden from the runner, and unread messages | Discover request sheet, `DriveView`, `HomeView` |
+| Own published trip visible, labeled “Your trip,” and not requestable by its owner | Journey test rejects the owner’s request. Another customer’s request reaches only that runner, newest first | `DiscoverView`, `Store.createOrder` |
+| Saved requests, pause/delete, one match notice, inbox, delay notice | Implemented. Unverified in the simulator | `HomeRun/DemoScreens.swift` |
+| Terms version demo-1, unchecked accept, FAQ, forgot-password copy | Terms screen confirmed by simulator screenshot. Accept tap was not available | `HomeRun/DemoScreens.swift`, `/tmp/homerun-shots/launch-terms.png` |
+| Recurrence weekly and every other week, demo clock steps, confirmed reset, publish matching trip | Implemented. Unverified in the simulator | Profile → Demo controls, My trips |
+| Extra Texas cities beyond Houston, plus a lookup for a city that is not in the starter list | Starter list expanded. Lookup code calls Nominatim. Not exercised live | `HomeRun/Logic.swift`, `HomeRun/Places.swift` |
+| Historical delivered and cancelled demo records | Added when those ids are missing. Not inspected in the UI | `AppDatabase` init |
+| Ten presenter scenarios and a five-minute walkthrough | Preparation is implemented and store-tested. The walkthrough itself was not performed | `docs/DEMO-SCENARIOS.md`, Demo controls |
+| Photo gallery paging and attribution, saved-place bookmark and list, trip notes and capacity edit, demo deletion while a pickup is active, notification preference, receipt from the ledger | Implemented in the app. Bookmark toggle, capacity note, reset clearing saved places, and a muted notification are store-tested. Gallery paging was not tapped | `PlaceGallery`, `DiscoverView`, `SavedPlacesView`, `DriveView` edit sheet, `OrderDetailView`, `ProfileView`, `Store.swift` |
+| Discover filters Apply/Reset/Clear all, pull to refresh, empty-trip Save a request, personal-item label, meetup directions, earnings period, recurrence date preview, skip a generated date, Order again opening Discover | Implemented. Not tapped | `DiscoverView`, `OrderDetailView`, `DriveView`, `HomeRunApp` |
+| Editing or reordering stops after a trip is published, one-occurrence edit beyond skip, UI automation of every control | Stops can be added, reordered, and removed after publication. A stop tied to an accepted pickup cannot be removed. Unaccepted quotes expire and their authorization is released. An edited generated date stays separate from the series, and generating again does not duplicate it. | `Store.applyTripEdits`, `TripEditor`, `HomeRunTests/TripEditTests.swift` |
+| Presenter scenario buttons | All ten scenarios have a Demo controls action. Each resets fictional records and leaves shared trips or orders for the normal screens. The store test calls all ten. None of the ten was tapped through in the simulator. | `DemoControlView`, `Store.prepareScenario`, `docs/DEMO-SCENARIOS.md` |
+| XCUITest target | HomeRunUITests launched on the iPhone 17 simulator through `xcodebuild test` without Computer Use. The test accepts demo terms when they are shown, confirms Home, Discover, Orders, and Profile, opens Demo controls, and checks that scenario 1 prepares the Houston dinner instructions. It does not tap the ten order journeys. | `HomeRunUITests/LaunchSmokeTests.swift`. TEST SUCCEEDED on 2026-10-25. |
+
+## Live checks
+
+These stay pending. A build, a unit test, a REST smoke call, or a fixture is not a pass.
+
+- Google map renders in the app: pending
+- Pickup-city selection across Texas, exercised in the running app: pending
+- Restaurant/store search returns real results for the selected city, on the Discover screen: pending
+- Available Google photos load in the app with attribution: pending
+- Route calculations from the configured Routes key, shown on a trip: pending
+- Connected order flow tapped through in the simulator, payments simulated: pending
+
+The app did launch on the iPhone 17 simulator. The first screen was the demo terms gate: slogan “By Aggies, for Aggies.”, version demo-1, the agreement toggle off, and Continue disabled. Screenshot: `/tmp/homerun-shots/launch-terms.png`. This machine has no Simulator.app to tap that toggle, and Computer Use was previously refused for Accessibility and Screen Recording. That blocks the rest of the in-app journey and the Google screen checks.
+
+Automated check that did run: `xcodebuild test` scheme HomeRun, iPhone 17 simulator, derived data `/tmp/HomeRunDD`. TEST SUCCEEDED. Unit tests include pricing, demo rules, the connected journey, saved places, and `TripEditTests` for stop reorder, accepted-stop protection, occurrence edits, and all ten scenario preparations. `HomeRunUITests` also passed: it accepts the terms gate when shown, confirms the customer tabs, opens Demo controls, and checks that scenario 1 shows the Houston dinner instructions. That UI test does not walk the ten order journeys.
+
+## Journey now in the app
+
+Launch signs in as Anish Koduri (`demo-maya`, `maya@demo.local`) and then stops on the terms gate until that person accepts demo-1. Profile → Demo people switches actors without deleting orders. Account 1 is not removed by demo reset.
+
+Jordan, Avery, and Sam have the scheduled trips, plus a Houston draft, a completed Houston history trip with a delivered $8 order and a $6.40 earning, and a cancelled history trip whose authorization was released. San Antonio still has no trip until Demo controls publishes one. The pickup-city list also includes El Paso, Lubbock, Amarillo, Corpus Christi, Laredo, Midland, Beaumont, Tyler, Abilene, Plano, Arlington, Round Rock, and Galveston. A typed city that is not in that list can be looked up.
+
+The request sheet stores each item, quantity, weight, bulky flag, fragile flag, and pickup reference. The store recomputes the quote from those lines. A straight-line estimate stays unpriced. The runner can publish, save a draft, close and reopen requests, start, and complete a trip. Edit trip covers the driving city, departure, cutoff, arrival estimate, spots, extra minutes and miles, item and total weight, custom items, notes, and planned stops. Stops can be added, moved, and removed. An accepted pickup keeps its stop, time, and limits. A generated date is edited on its own and is not duplicated when the series is generated again. Destination stays College Station. Delivery now has an Arriving step, and the code appears only for the customer. Decline requires a reason. A counteroffer from $1 to $250 waits for the customer. Cancel before pickup releases or refunds. After pickup the customer gets help instead. Taylor Brooks can refund a delivered order without changing it from delivered. Earnings can simulate a payout and filter this week or all time. Saved requests can be paused or deleted. Saved places toggle from a result and list under Profile. A place photo opens a paged gallery. The bell badge counts unread notices and messages. Demo reset also clears demo saved places. Reset still leaves Account 1 alone.
+
+The simulator showed the terms gate. The rest of the screens were not tapped. This Mac has no Simulator.app, and Computer Use was previously refused for Accessibility and Screen Recording.
+
+## Exact next task
+
+Accept the demo terms in the running app and walk one prepared scenario on the normal screens. Demo controls has a button for each of the ten scenarios. Those buttons prepare records. They do not perform the scenario. Then run the in-app Google checks listed above. Do not mark those checks passed from this document.
+
+Live Google checks and a tapped walkthrough remain externally blocked on this machine: there is no Simulator.app, and Computer Use was refused for Accessibility and Screen Recording. `xcodebuild test` can still launch the simulator. The UI test target is HomeRunUITests. A full control-by-control UI inventory was not automated.
+
+## Manual walkthrough
+
+Preparation and performance are separate. Profile → Demo controls → the numbered scenario resets fictional demo data and shows the steps. Then use the normal tabs.
+
+1. Houston dinner. Anish, Bayou Bowl Kitchen, light item, Campus Library Plaza, $8. Jordan accepts through the code. Earnings $6.40.
+2. Worth the detour. Dallas, labeled 6 miles and 12 minutes, $15.50 and $12.40. Avery completes it.
+3. A little heavier. Austin, Sam's trip. 35 lb quotes $15 / $12. Unknown or over 50 lb stays in review. An $18 counteroffer needs Anish's approval and records a $14.40 share.
+4. One stop, two orders. Anish and Alex both request Bayou Bowl. Separate orders and codes. The $2 shared-stop discount stays off.
+5. Catch the next trip. San Antonio has no trip. Save a request, publish a matching trip, see one notice, and do not get a charge.
+6. Plans change. Jordan cancels the Houston trip. Anish's accepted order is refunded.
+7. The last spot. Jordan accepts one of the two waiting requests. The second accept fails and is not captured.
+8. Make it right. Anish opens the delivered order and gets help. Taylor resolves without a refund, then simulates a full refund. The order stays delivered.
+9. Welcome, Aggie. Terms are unchecked, version demo-1. Continue stays disabled until the toggle is on. Bring food and Order food switch sides. Relaunch keeps the demo person.
+10. Offline. Discover shows the labeled sample catalog. A request stays in price review. Reset restores the baseline.
+
+The five-minute talk is still the one at the top of `docs/DEMO-SCENARIOS.md`. It has not been performed.
