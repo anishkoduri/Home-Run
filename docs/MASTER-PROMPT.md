@@ -6,6 +6,8 @@ Continue the EXISTING native iOS app at https://github.com/anishkoduri/Home-Run.
 
 Ordering model in the app: a request is Restaurant or store, or Home or personal item. The customer pays the merchant. Home Run simulates the delivery fee only. Pickup details stay on the shared order. After acceptance the customer adds confirmation and the runner reviews it before pickup. Paragraphs below that say the customer always pays separately, or that the runner purchases and is reimbursed, are superseded by this paragraph. Older stored runner-purchase records keep their merchandise ledger and are labeled as such.
 
+Product corrections in the app: the pickup-city sheet opens only from the city control or from an action that needs a city. Launch shows the existing mark, then Log in, Create account, or Explore the demo. Account preference is the starting side, not an exclusive role. Bottom tabs return to the root of that tab. Customer copy says requests are open or closed; runners see a pickup limit. Recommended browsing uses `DiscoveryCuration` and does not invent places. Home or personal item is on the main order screen. The primary demo profile email is `anishkoduri@tamu.edu`. Orders has Active, Past, and My Faves from the same saved places. Paragraphs below that require a blocking terms gate, exclusive order/deliver accounts, or “spots” as passenger seats are superseded by this paragraph.
+
 ## 1. Mission, boundaries, execution
 
 Home Run connects College Station customers with students already driving back from other cities who can bring food, groceries, packaged goods, and forgotten belongings. Optimize existing journeys, not instant courier dispatch. Availability and earnings are never guaranteed.

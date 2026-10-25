@@ -72,7 +72,7 @@ struct TripEditor: View {
                     if hasCutoff { DatePicker("Cutoff", selection: $cutoff).disabled(locked) }
                     Toggle("Arrival estimate", isOn: $hasEta).disabled(locked)
                     if hasEta { DatePicker("Arrival", selection: $eta).disabled(locked) }
-                    Stepper("Spots: \(spots)", value: $spots, in: 1...6)
+                    Stepper("Pickup limit: \(spots)", value: $spots, in: 1...6)
                     Stepper("Extra minutes: \(Int(detourMinutes))", value: $detourMinutes, in: 0...120, step: 5).disabled(locked)
                     Stepper("Extra miles: \(Int(detourMiles))", value: $detourMiles, in: 0...80, step: 1).disabled(locked)
                     Stepper("Item limit: \(Int(itemPounds)) lb", value: $itemPounds, in: 1...80, step: 1).disabled(locked)

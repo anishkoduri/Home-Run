@@ -41,19 +41,22 @@ struct DiscoverView: View {
     @State private var draftCategory = "all"
     @State private var showFilters = false
     @State private var searchGeneration = 0
-    @State private var showCities = false
+    @State private var personalBrowse: Bool
+    @State private var promoted: Set<String> = []
+    @State private var pendingFavorite: SavedPlace?
 
-    init(initialCity: String = Places.origins[0].name, initialQuery: String = "", focusTripID: String? = nil, embedded: Bool = false) {
+    init(initialCity: String = Places.origins[0].name, initialQuery: String = "", focusTripID: String? = nil, embedded: Bool = false, personalEntry: Bool = false) {
         self.initialCity = initialCity
         self.initialQuery = initialQuery
         self.focusTripID = focusTripID
         self.embedded = embedded
         _city = State(initialValue: initialCity)
         _search = State(initialValue: initialQuery)
+        _personalBrowse = State(initialValue: personalEntry)
     }
 
     private var estimateKey: String {
-        let place = restaurant?.place.placeId ?? ""
+        let place = personalBrowse ? "personal" : (restaurant?.place.placeId ?? "")
         let tripIDs = trips.map(\.id).joined(separator: ",")
         return "\(place)|\(handoff.type)|\(handoff.lat)|\(handoff.lng)|\(tripIDs)"
     }
@@ -74,7 +77,20 @@ struct DiscoverView: View {
                             .padding(.horizontal, -20)
                     }
                     VStack(alignment: .leading, spacing: 8) {
-                        PickupCityButton(city: city) { showCities = true }
+                        PickupCityButton(city: model.pickupCityConfirmed ? city : "Choose pickup city") {
+                            model.cityPickerOpen = true
+                        }
+                        Button(personalBrowse ? "Restaurant or store" : "Home or personal item") {
+                            if !model.pickupCityConfirmed {
+                                model.cityPickerOpen = true
+                            } else {
+                                personalBrowse.toggle()
+                                if personalBrowse { restaurant = nil }
+                            }
+                        }
+                        .font(Theme.text(.body, weight: .semibold))
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .accessibilityIdentifier("home-or-personal")
                         Text("Delivering to College Station.")
                             .font(Theme.text(.caption))
                             .foregroundStyle(Theme.muted)
@@ -104,7 +120,11 @@ struct DiscoverView: View {
                                 .accessibilityIdentifier("place-search")
                                 .onSubmit { Task { await searchPlaces(immediate: true) } }
                             Button("Search") {
-                                Task { await searchPlaces(immediate: true) }
+                                if !model.pickupCityConfirmed {
+                                    model.cityPickerOpen = true
+                                } else {
+                                    Task { await searchPlaces(immediate: true) }
+                                }
                             }
                             .font(Theme.text(.body, weight: .bold))
                             .frame(minWidth: 44, minHeight: 44)
@@ -128,13 +148,20 @@ struct DiscoverView: View {
                         Task { await searchPlaces(immediate: true) }
                     }
                     if let error { ErrorBanner(message: error) }
+                    if !promoted.isEmpty && search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !personalBrowse {
+                        Text("Recommended is an editorial selection for this metro. It is not a popularity rank, a sponsored placement, or a Google rating.")
+                            .font(Theme.text(.caption))
+                            .foregroundStyle(Theme.muted)
+                    }
                     if source == "sample" && error == nil {
                         Text("Sample places in \(city). Not live store listings.")
                             .font(Theme.text(.caption))
                             .foregroundStyle(Theme.muted)
                     }
                     if searching { ProgressView("Searching \(city)…") }
-                    if restaurant == nil {
+                    if personalBrowse {
+                        personalTrips
+                    } else if restaurant == nil {
                         if !searching && places.isEmpty && error == nil {
                             EmptyState(title: "No places in \(city)", message: "Try another name, or change the pickup city.")
                         }
@@ -152,6 +179,11 @@ struct DiscoverView: View {
                                         if let rating = place.rating {
                                             Text("\(rating, format: .number.precision(.fractionLength(1)))")
                                                 .font(Theme.text(.caption, weight: .semibold))
+                                                .foregroundStyle(Theme.maroon)
+                                        }
+                                        if promoted.contains(place.placeId) {
+                                            Text("Recommended")
+                                                .font(Theme.text(.caption2, weight: .bold))
                                                 .foregroundStyle(Theme.maroon)
                                         }
                                         if place.outsideCity == true {
@@ -316,24 +348,37 @@ struct DiscoverView: View {
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.light, for: .navigationBar)
             .task {
-                if !embedded { city = model.pickupCity }
+                if let saved = model.stagedFavorite {
+                    model.stagedFavorite = nil
+                    personalBrowse = false
+                    pendingFavorite = saved
+                    if Places.city(named: saved.city) != nil {
+                        city = Places.city(named: saved.city)?.name ?? saved.city
+                        model.confirmPickupCity(city)
+                    }
+                } else if !embedded, model.pickupCityConfirmed {
+                    city = model.pickupCity
+                }
                 await searchPlaces(immediate: true)
             }
             .task(id: city) {
                 restaurant = nil
                 await loadTrips()
                 await searchPlaces(immediate: true)
+                if let saved = pendingFavorite {
+                    pendingFavorite = nil
+                    guard !saved.placeId.isEmpty, !saved.name.isEmpty else { return }
+                    restaurant = (Place(placeId: saved.placeId, name: saved.name, address: saved.address, lat: saved.lat, lng: saved.lng, contentSource: saved.contentSource), saved.contentSource ?? "saved")
+                }
             }
             .refreshable {
                 await loadTrips()
                 await searchPlaces(immediate: true)
             }
-            .sheet(isPresented: $showCities) {
-                PickupCitySheet { name in
-                    city = name
-                    model.confirmPickupCity(name)
-                    restaurant = nil
-                }
+            .onChange(of: model.pickupCity) { _, name in
+                guard model.pickupCityConfirmed, !embedded else { return }
+                city = name
+                restaurant = nil
             }
             .task(id: estimateKey) { await estimateAll() }
             .sheet(item: $request) { draft in
@@ -454,7 +499,51 @@ struct DiscoverView: View {
         }
     }
 
+    @ViewBuilder
+    private var personalTrips: some View {
+        Text("Home or personal item")
+            .font(Theme.section())
+        Text("No store purchase. Describe the item, where it is, and when someone can pick it up.")
+            .font(Theme.text(.caption))
+            .foregroundStyle(Theme.muted)
+        if ranked.isEmpty {
+            EmptyState(title: "No trips from \(city)", message: "No one has posted a drive from here yet.")
+        }
+        ForEach(ranked, id: \.trip.id) { row in
+            VStack(alignment: .leading, spacing: 8) {
+                TripSummary(trip: row.trip)
+                if row.own {
+                    Text("Your trip.").font(Theme.text(.caption, weight: .bold)).foregroundStyle(Theme.maroon)
+                } else if let estimate = row.estimate {
+                    Text("\(Format.minutes(estimate.detourMinutes)) added · \(previewFee(estimate))")
+                        .font(Theme.text(.subheadline, weight: .bold)).foregroundStyle(Theme.maroon)
+                    Button("Request a pickup") {
+                        request = RequestDraft(trip: row.trip, estimate: estimate, place: Self.sampleHouse(near: row.trip), source: "sample", handoff: handoff, kind: "personal")
+                    }
+                    .font(Theme.text(.headline, weight: .semibold))
+                    .frame(minHeight: 44)
+                    .disabled((row.trip.activeOrders ?? 0) >= row.trip.maxOrders)
+                } else {
+                    ProgressView("Calculating route…")
+                }
+            }
+            .padding(12)
+            .ticketPanel()
+        }
+    }
+
     private func searchPlaces(immediate: Bool, token: Int? = nil) async {
+        if personalBrowse {
+            places = []
+            promoted = []
+            searching = false
+            return
+        }
+        guard model.pickupCityConfirmed || embedded else {
+            places = []
+            searching = false
+            return
+        }
         if immediate { searchGeneration += 1 }
         let current = token ?? searchGeneration
         searching = true
@@ -465,7 +554,8 @@ struct DiscoverView: View {
                 query: ["city": city, "q": search, "category": category]
             )
             guard current == searchGeneration else { return }
-            places = response.places
+            places = DiscoveryCuration.order(response.places, city: city, query: search, category: category)
+            promoted = DiscoveryCuration.promotedIDs(in: places, city: city, query: search, category: category)
             source = response.source
             error = nil
         } catch {
@@ -500,6 +590,34 @@ struct DiscoverView: View {
     }
 
     private func estimateAll() async {
+        if personalBrowse {
+            estimates = [:]
+            let client: APIClient
+            do { client = try model.client() } catch {
+                self.error = error.localizedDescription
+                return
+            }
+            for trip in trips.filter({ $0.driverId != model.user?.id }).prefix(12) {
+                if Task.isCancelled { return }
+                let house = Self.sampleHouse(near: trip)
+                do {
+                    let result = try await Routing.estimate(
+                        client: client,
+                        origin: LatLng(lat: trip.originLat, lng: trip.originLng),
+                        destination: LatLng(lat: trip.destinationLat, lng: trip.destinationLng),
+                        stops: (trip.stops ?? []).map { LatLng(lat: $0.lat, lng: $0.lng) },
+                        restaurant: LatLng(lat: house.lat, lng: house.lng),
+                        dropoff: LatLng(lat: handoff.lat, lng: handoff.lng)
+                    )
+                    if Task.isCancelled { return }
+                    estimates[trip.id] = result.0
+                } catch {
+                    self.error = error.localizedDescription
+                    return
+                }
+            }
+            return
+        }
         guard let restaurant, !restaurant.place.placeId.isEmpty else { return }
         estimates = [:]
         let client: APIClient

@@ -9,8 +9,12 @@ struct AuthView: View {
     @State private var use = AccountUse.both
     @State private var busy = false
     @State private var error: String?
+    @State private var revealPassword = false
+    @State private var agreed = false
+    @State private var legal: LegalPage?
 
     enum Mode { case signIn, signUp }
+    enum LegalPage: String, Identifiable { case terms, privacy; var id: String { rawValue } }
 
     var body: some View {
         ScrollView {
@@ -28,6 +32,7 @@ struct AuthView: View {
                         Text("By Aggies, for Aggies.")
                             .font(Theme.text(.caption, weight: .semibold))
                             .foregroundStyle(.white.opacity(0.9))
+                            .accessibilityIdentifier("slogan")
                         Text(mode == .signIn ? "Sign in" : "Create an account")
                             .font(Theme.text(.subheadline))
                             .foregroundStyle(.white.opacity(0.85))
@@ -44,8 +49,11 @@ struct AuthView: View {
                 Text("Bring something home.")
                     .font(Theme.section(.title2))
                     .foregroundStyle(Theme.ink)
-                Text("Food runs to College Station.")
+                Text("Supply drops for Aggies from Aggies.")
                     .font(Theme.text(.subheadline))
+                    .foregroundStyle(Theme.muted)
+                Text("Demo • sample data • no real charges")
+                    .font(Theme.text(.caption))
                     .foregroundStyle(Theme.muted)
 
                 if mode == .signUp {
@@ -73,12 +81,38 @@ struct AuthView: View {
                 field("Email", text: $email)
                     .textInputAutocapitalization(.never)
                     .keyboardType(.emailAddress)
-                SecureField("Password", text: $password)
-                    .padding(12)
-                    .frame(minHeight: 44)
-                    .sketchPanel()
+                HStack(spacing: 8) {
+                    Group {
+                        if revealPassword {
+                            TextField("Password", text: $password)
+                        } else {
+                            SecureField("Password", text: $password)
+                        }
+                    }
+                    .textContentType(mode == .signIn ? .password : .newPassword)
+                    Button(revealPassword ? "Hide" : "Show") { revealPassword.toggle() }
+                        .font(Theme.text(.caption, weight: .bold))
+                        .frame(minWidth: 44, minHeight: 44)
+                        .accessibilityLabel(revealPassword ? "Hide password" : "Show password")
+                }
+                .padding(.horizontal, 12)
+                .frame(minHeight: 44)
+                .sketchPanel()
+                if mode == .signUp {
+                    Toggle(isOn: $agreed) {
+                        Text("I agree to the terms and privacy note")
+                    }
+                    .font(Theme.text(.body))
+                    HStack(spacing: 16) {
+                        Button("Terms") { legal = .terms }.font(Theme.text(.caption, weight: .semibold))
+                        Button("Privacy") { legal = .privacy }.font(Theme.text(.caption, weight: .semibold))
+                    }
+                    Text("Creating an account stays on this phone. No email is sent and no bank or card details are collected.")
+                        .font(Theme.text(.caption))
+                        .foregroundStyle(Theme.muted)
+                }
                 if let error { ErrorBanner(message: error) }
-                PrimaryButton(title: mode == .signIn ? "Sign in" : "Create account", busy: busy) { submit() }
+                PrimaryButton(title: mode == .signIn ? "Log in" : "Create account", busy: busy) { submit() }
                 Button(mode == .signIn ? "Create an account" : "Sign in") {
                     mode = mode == .signIn ? .signUp : .signIn
                     error = nil
@@ -88,6 +122,13 @@ struct AuthView: View {
                 if mode == .signIn {
                     Button("Forgot password") { error = "No email was sent. This demo keeps the password on this phone." }
                         .font(Theme.text(.caption, weight: .semibold))
+                    Button("Explore the demo") { enterDemo() }
+                        .font(Theme.text(.body, weight: .bold))
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .accessibilityIdentifier("demo-entry")
+                    Text("Sample sign-in on this phone. It does not create an external account or send email.")
+                        .font(Theme.text(.caption))
+                        .foregroundStyle(Theme.muted)
                 }
                 Text("Student-run project. Not affiliated with any university. Accounts stay on this phone.")
                     .font(Theme.text(.caption2))
@@ -98,6 +139,20 @@ struct AuthView: View {
         }
         .homeRunPage(road: false)
         .background(Theme.cream.ignoresSafeArea())
+        .scrollDismissesKeyboard(.interactively)
+        .sheet(item: $legal) { page in
+            NavigationStack {
+                ScrollView {
+                    Text(page == .terms ? LegalCopy.terms : LegalCopy.privacy)
+                        .font(Theme.text(.footnote))
+                        .padding(20)
+                }
+                .homeRunPage(road: false)
+                .navigationTitle(page == .terms ? "Terms" : "Privacy")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { legal = nil } } }
+            }
+        }
     }
 
     private func field(_ title: String, text: Binding<String>) -> some View {
@@ -116,8 +171,21 @@ struct AuthView: View {
             error = "Add the name other students will see."
             return
         }
-        if password.count < 8 {
+        let trimmedEmail = email.trimmingCharacters(in: .whitespaces)
+        if trimmedEmail.isEmpty || (mode == .signUp && (!trimmedEmail.contains("@") || trimmedEmail.contains(" "))) {
+            error = "Enter an email address."
+            return
+        }
+        if mode == .signUp && password.count < 8 {
             error = "Use a password with at least 8 characters."
+            return
+        }
+        if password.isEmpty {
+            error = "Enter a password."
+            return
+        }
+        if mode == .signUp && !agreed {
+            error = "Agree to the terms to create an account."
             return
         }
         busy = true
@@ -128,10 +196,21 @@ struct AuthView: View {
                     try await model.signIn(email: email.trimmingCharacters(in: .whitespaces), password: password)
                 } else {
                     try await model.signUp(name: name.trimmingCharacters(in: .whitespaces), email: email.trimmingCharacters(in: .whitespaces), password: password, use: use)
+                    if let user = model.user { DemoTerms.accept(userId: user.id) }
                 }
             } catch {
                 self.error = error.localizedDescription
             }
+        }
+    }
+
+    private func enterDemo() {
+        error = nil
+        busy = true
+        Task {
+            defer { busy = false }
+            do { try await model.enterDemo() }
+            catch { self.error = "The sample sign-in stayed on this phone and did not go through. \(error.localizedDescription)" }
         }
     }
 }

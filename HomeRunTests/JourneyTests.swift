@@ -5,7 +5,7 @@ import Testing
 struct JourneyTests {
     @Test func aPublishedTripReachesTheAssignedRunner() async throws {
         let db = AppDatabase.testingStore()
-        let maya = try await signIn(db, email: "maya@demo.local", password: "demo")
+        let maya = try await signIn(db, email: "anishkoduri@tamu.edu", password: "demo")
         let jordan = try await signIn(db, email: "jordan@demo.local", password: "demo")
         let alex = try await signIn(db, email: "alex@demo.local", password: "demo")
         let avery = try await signIn(db, email: "avery@demo.local", password: "demo")
@@ -112,7 +112,7 @@ struct JourneyTests {
 
     @Test func bookmarksAndTripEditsUseTheSameStore() async throws {
         let db = AppDatabase.testingStore()
-        let maya = try await signIn(db, email: "maya@demo.local", password: "demo")
+        let maya = try await signIn(db, email: "anishkoduri@tamu.edu", password: "demo")
         let jordan = try await signIn(db, email: "jordan@demo.local", password: "demo")
         let saved: SavedPlaceList = try await send(db, "saved-places", method: "POST", token: maya.token, body: [
             "place_id": "sample:bayou",

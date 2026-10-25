@@ -187,9 +187,24 @@ struct TripSummary: View {
             Text(Format.relative(trip.departureAt))
                 .font(Theme.text(.subheadline))
                 .foregroundStyle(Theme.muted)
-            Text(spotLine)
+            if let eta = trip.etaAt, !eta.isEmpty {
+                Text("Expected \(Format.relative(eta))")
+                    .font(Theme.text(.subheadline))
+                    .foregroundStyle(Theme.muted)
+            }
+            if let stops = trip.stops, !stops.isEmpty {
+                Text(stops.map(\.restaurantName).joined(separator: " · "))
+                    .font(Theme.text(.subheadline))
+                    .foregroundStyle(Theme.ink)
+            }
+            Text(TripCopy.requestsOpen(trip))
                 .font(Theme.text(.subheadline, weight: .semibold))
                 .foregroundStyle(Theme.ink)
+            if let minutes = trip.maxDetourMinutes {
+                Text("Detour up to \(Int(minutes)) min")
+                    .font(Theme.text(.caption))
+                    .foregroundStyle(Theme.muted)
+            }
             if let name = Format.personalName(trip.driver?.displayName) {
                 Text(name).font(Theme.text(.subheadline)).foregroundStyle(Theme.muted)
             }
@@ -197,12 +212,6 @@ struct TripSummary: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var spotLine: String {
-        let taken = trip.activeOrders ?? 0
-        let open = max(0, trip.maxOrders - taken)
-        if open == 0 { return "No spots left · \(taken) of \(trip.maxOrders)" }
-        return "\(open) of \(trip.maxOrders) spots open"
-    }
 }
 
 struct Hairline: View {

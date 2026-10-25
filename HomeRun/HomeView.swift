@@ -12,7 +12,6 @@ struct HomeView: View {
     @State private var error: String?
     @State private var loaded = false
     @State private var expandedTripID: String?
-    @State private var showCities = false
 
     var body: some View {
         NavigationStack {
@@ -40,13 +39,9 @@ struct HomeView: View {
             .task { await watch { await load() } }
             .onAppear {
                 if model.pickupCityConfirmed { city = model.pickupCity }
-                else { showCities = true }
             }
-            .sheet(isPresented: $showCities) {
-                PickupCitySheet { name in
-                    city = name
-                    model.confirmPickupCity(name)
-                }
+            .onChange(of: model.pickupCity) { _, name in
+                if model.pickupCityConfirmed { city = name }
             }
             .sensoryFeedback(.selection, trigger: expandedTripID)
         }
@@ -129,6 +124,24 @@ struct HomeView: View {
         .accessibilityHidden(true)
     }
 
+    private var searchArrow: some View {
+        Image(systemName: "arrow.right")
+            .font(Theme.text(.body, weight: .bold))
+            .foregroundStyle(.white)
+            .frame(width: 48, height: 48)
+            .background(Theme.maroon)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private var personalEntryLabel: some View {
+        Text("Home or personal item")
+            .font(Theme.text(.body, weight: .semibold))
+            .foregroundStyle(Theme.maroon)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .background(Theme.surface)
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Theme.maroon, lineWidth: 1.2))
+    }
+
     private var pickupTitle: some View {
         Text("Find a pickup")
             .font(Theme.section(.title3))
@@ -140,7 +153,11 @@ struct HomeView: View {
     private var pickupBar: some View {
         VStack(alignment: .leading, spacing: 10) {
             pickupTitle
-            PickupCityButton(city: city) { showCities = true }
+            PickupCityButton(city: model.pickupCityConfirmed ? city : "Choose pickup city") {
+                if CityPickerGate.opens(userTappedControl: true, actionNeedsCity: false, cityConfirmed: model.pickupCityConfirmed) {
+                    model.cityPickerOpen = true
+                }
+            }
             Text("Delivering to College Station.")
                 .font(Theme.text(.caption))
                 .foregroundStyle(Theme.muted)
@@ -151,19 +168,41 @@ struct HomeView: View {
                     .textFieldStyle(.plain)
                     .submitLabel(.search)
                     .frame(minHeight: 48)
-                NavigationLink {
-                    DiscoverView(initialCity: city, initialQuery: query, embedded: true)
-                } label: {
-                    Image(systemName: "arrow.right")
-                        .font(Theme.text(.body, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 48, height: 48)
-                        .background(Theme.maroon)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                if model.pickupCityConfirmed {
+                    NavigationLink {
+                        DiscoverView(initialCity: city, initialQuery: query, embedded: true)
+                    } label: {
+                        searchArrow
+                    }
+                    .buttonStyle(PressStyle())
+                    .accessibilityLabel("Find a pickup")
+                    .accessibilityHint("Opens restaurant search for \(city)")
+                } else {
+                    Button {
+                        model.cityPickerOpen = true
+                    } label: {
+                        searchArrow
+                    }
+                    .buttonStyle(PressStyle())
+                    .accessibilityLabel("Choose pickup city")
                 }
-                .buttonStyle(PressStyle())
-                .accessibilityLabel("Find a pickup")
-                .accessibilityHint("Opens restaurant search for \(city)")
+            }
+            HStack(spacing: 8) {
+                if model.pickupCityConfirmed {
+                    NavigationLink {
+                        DiscoverView(initialCity: city, embedded: true, personalEntry: true)
+                    } label: {
+                        personalEntryLabel
+                    }
+                    .buttonStyle(PressStyle())
+                } else {
+                    Button {
+                        model.cityPickerOpen = true
+                    } label: {
+                        personalEntryLabel
+                    }
+                    .buttonStyle(.plain)
+                }
             }
         }
         .padding(16)
@@ -286,7 +325,7 @@ private struct TripLane: View {
                         .font(Theme.text(.subheadline))
                         .foregroundStyle(Theme.muted)
                     HStack {
-                        Text(spots)
+                        Text(TripCopy.requestsOpen(trip))
                             .font(Theme.text(.subheadline, weight: .semibold))
                             .foregroundStyle(Theme.ink)
                         Spacer()
@@ -311,7 +350,7 @@ private struct TripLane: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("\(trip.originCity) to \(trip.destinationCity), \(Format.relative(trip.departureAt)), \(spots)")
+            .accessibilityLabel("\(trip.originCity) to \(trip.destinationCity), \(Format.relative(trip.departureAt)), \(TripCopy.requestsOpen(trip))")
             .accessibilityHint(expanded ? "Hides the route" : "Shows the posted route")
             .accessibilityAddTraits(expanded ? .isSelected : [])
 
@@ -326,12 +365,6 @@ private struct TripLane: View {
         .animation(reduceMotion ? nil : .spring(duration: 0.35, bounce: 0.14), value: expanded)
     }
 
-    private var spots: String {
-        let taken = trip.activeOrders ?? 0
-        let open = max(0, trip.maxOrders - taken)
-        if open == 0 { return "No spots left · \(taken) of \(trip.maxOrders)" }
-        return "\(open) of \(trip.maxOrders) spots open"
-    }
 }
 
 private struct TripRouteDetail: View {

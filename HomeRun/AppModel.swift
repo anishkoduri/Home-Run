@@ -21,6 +21,10 @@ final class AppModel {
     var side = AppSide.ordering
     var pickupCity: String
     var pickupCityConfirmed: Bool
+    /// Transient. Only buttons and an action that needs a city set this.
+    var cityPickerOpen = false
+    var stagedFavorite: SavedPlace?
+    var driveRootTick = 0
 
     enum AppSide: Equatable { case ordering, driving }
 
@@ -59,8 +63,21 @@ final class AppModel {
     func restore() async {
         restoring = true
         defer { restoring = false }
-        signOutLocal()
-        await signInDemo()
+        guard token != nil else { return }
+        do {
+            let session: SessionResume = try await client().store("session")
+            user = session.user
+            profile = session.profile
+            restoreError = nil
+            alignSide()
+            await refreshBadges()
+        } catch {
+            signOutLocal()
+        }
+    }
+
+    func enterDemo() async throws {
+        try await signIn(email: "anishkoduri@tamu.edu", password: "demo")
     }
 
     func signIn(email: String, password: String) async throws {
@@ -104,15 +121,6 @@ final class AppModel {
         apply(response)
     }
 
-    private func signInDemo() async {
-        do {
-            try await signIn(email: "maya@demo.local", password: "demo")
-        } catch {
-            do { try await signIn(email: "1", password: "1") }
-            catch { restoreError = error.localizedDescription }
-        }
-    }
-
     private func alignSide() {
         if profile?.use == .deliver { side = .driving }
         if profile?.use == .order { side = .ordering }
@@ -136,3 +144,8 @@ private struct Credentials: Encodable {
 }
 
 private struct Okay: Decodable { var ok: Bool }
+
+private struct SessionResume: Decodable {
+    var user: SessionUser
+    var profile: Profile
+}

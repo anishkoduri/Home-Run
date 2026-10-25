@@ -56,9 +56,17 @@ actor AppDatabase {
         self.storageURL = storageURL
         db = Self.load(from: storageURL)
         seedDemoIfNeeded()
-        if let index = db.users.firstIndex(where: { $0.id == "demo-maya" }), db.users[index].displayName != "Anish Koduri" {
-            db.users[index].displayName = "Anish Koduri"
-            try? save()
+        if let index = db.users.firstIndex(where: { $0.id == "demo-maya" }) {
+            var changed = false
+            if db.users[index].displayName != "Anish Koduri" {
+                db.users[index].displayName = "Anish Koduri"
+                changed = true
+            }
+            if db.users[index].email == "maya@demo.local" {
+                db.users[index].email = "anishkoduri@tamu.edu"
+                changed = true
+            }
+            if changed { try? save() }
         }
         let limits: [String: (Double, Double)] = [
             "demo-trip-jordan": (50, 50),
@@ -783,7 +791,7 @@ actor AppDatabase {
             restaurantWebsite: website(body["restaurant_website"]),
             placeSource: ["google", "osm", "sample"].contains(placeSource ?? "") ? placeSource : nil,
             destinationType: destinationType ?? "campus",
-            destinationLabel: try required(body["destination_label"], max: 160, message: "Choose a handoff spot."),
+            destinationLabel: try required(body["destination_label"], max: 160, message: "Choose where to meet."),
             destinationLat: try coordinate(body["destination_lat"], "Handoff location is missing."),
             destinationLng: try coordinate(body["destination_lng"], "Handoff location is missing."),
             detourMinutes: Self.number(body["detour_minutes"]),
@@ -885,8 +893,8 @@ actor AppDatabase {
             guard isCustomer, order.status == .requested else {
                 throw APIError(message: "Delivery details can only be edited by the customer before acceptance.", code: "forbidden")
             }
-            if body.keys.contains("destination_type") { order.destinationType = try required(body["destination_type"], max: 20, message: "Choose a handoff spot.") }
-            if body.keys.contains("destination_label") { order.destinationLabel = try required(body["destination_label"], max: 160, message: "Choose a handoff spot.") }
+            if body.keys.contains("destination_type") { order.destinationType = try required(body["destination_type"], max: 20, message: "Choose where to meet.") }
+            if body.keys.contains("destination_label") { order.destinationLabel = try required(body["destination_label"], max: 160, message: "Choose where to meet.") }
             if body.keys.contains("destination_lat") { order.destinationLat = try coordinate(body["destination_lat"], "Handoff location is missing.") }
             if body.keys.contains("destination_lng") { order.destinationLng = try coordinate(body["destination_lng"], "Handoff location is missing.") }
             if body.keys.contains("customer_note") { order.customerNote = text(body["customer_note"], max: 500) }
@@ -1748,11 +1756,11 @@ actor AppDatabase {
             instructions = "Profile → Demo people → Jordan Ellis. My trips → the Houston trip → Cancel trip. The order is accepted and the customer has not added store confirmation, so the simulated delivery fee is refunded. Money paid to a store is not refunded by Home Run. Both people get a notice. The pickup is not reassigned."
         case 7:
             fixture = "standard"; samples = false; city = "Houston"; clearTerms = false
-            title = "The last spot"
+            title = "The last pickup"
             if let index = db.trips.firstIndex(where: { $0.id == "demo-trip-jordan" }) { db.trips[index].maxOrders = 1 }
             stageOrder(id: "demo-order-race-maya", tripId: "demo-trip-jordan", customerId: "demo-maya", placeId: "sample:bayou-bowl", name: "Bayou Bowl Kitchen", lat: 29.743, lng: -95.369, status: .requested)
             stageOrder(id: "demo-order-race-alex", tripId: "demo-trip-jordan", customerId: "demo-alex", placeId: "sample:bayou-coffee", name: "Bayou Coffee Counter", lat: 29.752, lng: -95.358, status: .requested)
-            instructions = "Profile → Demo people → Jordan Ellis. Requests lists Anish Koduri and Alex Morgan, each with pickup details. Accept one. Accepting the other fails because the only spot is taken, and that delivery fee is not captured."
+            instructions = "Profile → Demo people → Jordan Ellis. Requests lists Anish Koduri and Alex Morgan, each with pickup details. Accept one. Accepting the other fails because the pickup limit is full, and that delivery fee is not captured."
         case 8:
             fixture = ""; samples = false; city = "Houston"; clearTerms = false
             title = "Make it right"
@@ -1760,7 +1768,7 @@ actor AppDatabase {
         case 9:
             fixture = ""; samples = false; city = "Houston"; clearTerms = true
             title = "Welcome, Aggie"
-            instructions = "The demo terms are unchecked again. Version demo-1. Open the terms, leave the toggle off, and see Continue stay disabled. Accept, then use Bring food and Order food. Force quit and reopen: the same demo person returns. Sign out to read Forgot password: no email is sent."
+            instructions = "Sign out if you are already in. Create account shows Terms and Privacy with the agreement unchecked. The seeded demo person does not see a separate terms gate. Explore the demo signs in as Anish Koduri on this phone. No email is sent. Bring food and Get food both stay available. Force quit and reopen: the same session returns."
         case 10:
             fixture = "review"; samples = true; city = "Houston"; clearTerms = false
             title = "Offline, still presentable"
@@ -2013,7 +2021,7 @@ actor AppDatabase {
                 StoredUser(id: id, email: email, passwordHash: Self.hash("demo", salt: id), passwordSalt: id, displayName: name, avatarUrl: nil, paymentHandle: nil, createdAt: Self.stamp(), intent: intent.rawValue)
             }
             db.users.append(contentsOf: [
-                person("demo-maya", "Anish Koduri", "maya@demo.local", .order),
+                person("demo-maya", "Anish Koduri", "anishkoduri@tamu.edu", .order),
                 person("demo-jordan", "Jordan Ellis", "jordan@demo.local", .deliver),
                 person("demo-avery", "Avery Patel", "avery@demo.local", .deliver),
                 person("demo-sam", "Sam Rivera", "sam@demo.local", .both),

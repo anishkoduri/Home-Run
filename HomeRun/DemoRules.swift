@@ -60,7 +60,7 @@ struct SavedRequest: Codable, Identifiable, Equatable {
     var createdAt: String
 }
 
-struct SavedPlace: Codable, Identifiable, Equatable {
+struct SavedPlace: Codable, Identifiable, Equatable, Hashable {
     var id: String
     var userId: String
     var placeId: String

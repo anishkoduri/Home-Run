@@ -51,7 +51,7 @@ struct RootView: View {
             destination
                 .offset(y: reduceMotion ? 0 : 12 * (1 - handoff))
             if showLaunch, !reduceMotion {
-                LaunchSlide(crossed: crossed) { crossed = true }
+                LaunchSlide { crossed = true }
                     .opacity(1 - handoff)
                     .allowsHitTesting(handoff == 0)
             }
@@ -75,6 +75,11 @@ struct RootView: View {
             reveal()
         }
         .task { await model.restore() }
+        .task {
+            guard !reduceMotion else { return }
+            try? await Task.sleep(for: .milliseconds(900))
+            reveal()
+        }
     }
 
     private func reveal() {
@@ -121,11 +126,9 @@ struct RootView: View {
 struct MainTabs: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var termsTick = 0
-
     var body: some View {
         Group {
-            if model.side == .driving, model.profile?.use != .order {
+            if model.side == .driving {
                 DriveShell()
             } else {
                 OrderShell()
@@ -133,12 +136,6 @@ struct MainTabs: View {
         }
         .animation(reduceMotion ? nil : .snappy(duration: 0.35), value: model.side)
         .sensoryFeedback(.selection, trigger: model.side)
-        .overlay {
-            if let user = model.user, !DemoTerms.accepted(by: user.id) {
-                TermsGate(userId: user.id) { termsTick += 1 }
-            }
-        }
-        .id(termsTick)
         .task {
             while !Task.isCancelled {
                 await model.refreshBadges()
@@ -152,7 +149,7 @@ private struct OrderShell: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dynamicTypeSize) private var typeSize
     @State private var tab = Tab.home
-    @State private var orderOnly = false
+    @State private var roots: [Tab: Int] = [:]
     @Namespace private var tabSpace
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -162,10 +159,10 @@ private struct OrderShell: View {
         VStack(spacing: 0) {
             Group {
                 switch tab {
-                case .home: HomeView()
-                case .discover: DiscoverView()
-                case .orders: OrdersView()
-                case .profile: ProfileView()
+                case .home: HomeView().id(roots[.home] ?? 0)
+                case .discover: DiscoverView().id(roots[.discover] ?? 0)
+                case .orders: OrdersView().id(roots[.orders] ?? 0)
+                case .profile: ProfileView().id(roots[.profile] ?? 0)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -175,8 +172,8 @@ private struct OrderShell: View {
                 tabButton("Orders", "bag", .orders, badge: model.ordersBadge)
                 tabButton("Profile", "person", .profile)
                 Button {
-                    if model.profile?.use == .order { orderOnly = true }
-                    else { model.side = .driving }
+                    model.cityPickerOpen = false
+                    model.side = .driving
                 } label: {
                     VStack(spacing: 3) {
                         Image(systemName: "car.fill")
@@ -197,6 +194,7 @@ private struct OrderShell: View {
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
                 .buttonStyle(PressStyle())
+                .accessibilityIdentifier("bring-food")
                 .accessibilityLabel(model.driveBadge > 0 ? "Bring food, \(model.driveBadge) waiting" : "Bring food")
                 .accessibilityHint("Opens the driver side of Home Run")
             }
@@ -211,10 +209,10 @@ private struct OrderShell: View {
         }
         .homeRunPage(road: false)
         .tint(Theme.maroon)
-        .alert("This account is for ordering", isPresented: $orderOnly) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("Choose deliver or both when you create an account to bring food.")
+        .sheet(isPresented: Bindable(model).cityPickerOpen) {
+            PickupCitySheet { name in
+                model.confirmPickupCity(name)
+            }
         }
         .onChange(of: model.requestedCustomerTab) { _, value in
             if value == "discover" {
@@ -226,7 +224,12 @@ private struct OrderShell: View {
 
     private func tabButton(_ title: String, _ symbol: String, _ value: Tab, badge: Int = 0) -> some View {
         Button {
-            tab = value
+            if tab == value {
+                roots[value, default: 0] += 1
+                model.cityPickerOpen = false
+            } else {
+                tab = value
+            }
         } label: {
             VStack(spacing: 4) {
                 Image(systemName: symbol)
@@ -269,7 +272,8 @@ private struct DriveShell: View {
             HStack(spacing: 8) {
                 ForEach(DriveView.Section.allCases) { item in
                     Button {
-                        section = item
+                        if section == item { model.driveRootTick += 1 }
+                        else { section = item }
                     } label: {
                         VStack(spacing: 4) {
                             Image(systemName: item.symbol)
@@ -294,10 +298,10 @@ private struct DriveShell: View {
                     .buttonStyle(.plain)
                     .animation(reduceMotion ? nil : .spring(duration: 0.32, bounce: 0.16), value: section)
                 }
-                if model.profile?.use != .deliver {
-                    Button {
-                        model.side = .ordering
-                    } label: {
+                Button {
+                    model.cityPickerOpen = false
+                    model.side = .ordering
+                } label: {
                         VStack(spacing: 4) {
                             Image(systemName: "bag.fill")
                             if !typeSize.isAccessibilitySize {
@@ -314,9 +318,9 @@ private struct DriveShell: View {
                         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     }
                     .buttonStyle(PressStyle())
+                    .accessibilityIdentifier("get-food")
                     .accessibilityLabel("Get food")
                     .accessibilityHint("Opens the ordering side of Home Run")
-                }
             }
             .padding(.horizontal, 10)
             .padding(.top, 8)

@@ -7,7 +7,7 @@ struct TripEditTests {
     @Test func stopsReorderAndAcceptedStopsStay() async throws {
         let db = AppDatabase.testingStore()
         let jordan = try await signIn(db, email: "jordan@demo.local", password: "demo")
-        let maya = try await signIn(db, email: "maya@demo.local", password: "demo")
+        let maya = try await signIn(db, email: "anishkoduri@tamu.edu", password: "demo")
         let mine: [Trip] = try await send(db, "trips", token: jordan.token, query: ["mine": "1"])
         let houston = try #require(mine.first { $0.id == "demo-trip-jordan" })
         let first: [String: Any] = ["id": "stop-a", "restaurant_name": "First Kitchen", "lat": houston.originLat, "lng": houston.originLng, "place_id": "sample:first"]
@@ -78,7 +78,7 @@ struct TripEditTests {
             DemoRouteFixture.setSamples(false)
         }
         let db = AppDatabase.testingStore()
-        let maya = try await signIn(db, email: "maya@demo.local", password: "demo")
+        let maya = try await signIn(db, email: "anishkoduri@tamu.edu", password: "demo")
         let jordan = try await signIn(db, email: "jordan@demo.local", password: "demo")
         let dinner: ScenarioPrep = try await send(db, "demo-scenario", method: "POST", token: maya.token, body: ["scenario": 1])
         #expect(dinner.city == "Houston")
@@ -86,7 +86,7 @@ struct TripEditTests {
         #expect(houston.first { $0.id == "demo-trip-jordan" }?.stops?.first?.placeId == "sample:bayou-bowl")
 
         let race: ScenarioPrep = try await send(db, "demo-scenario", method: "POST", token: maya.token, body: ["scenario": 7])
-        #expect(race.title.contains("last spot"))
+        #expect(race.title.contains("last pickup"))
         let requests: [Order] = try await send(db, "orders", token: jordan.token, query: ["role": "driver"])
         let pending = requests.filter { $0.id == "demo-order-race-maya" || $0.id == "demo-order-race-alex" }
         #expect(pending.count == 2)
@@ -133,7 +133,7 @@ struct TripEditTests {
             }
         }
         let db = AppDatabase.testingStore()
-        let maya = try await signIn(db, email: "maya@demo.local", password: "demo")
+        let maya = try await signIn(db, email: "anishkoduri@tamu.edu", password: "demo")
         for number in 1...10 {
             let prep: ScenarioPrep = try await send(db, "demo-scenario", method: "POST", token: maya.token, body: ["scenario": number])
             #expect(prep.scenario == number)

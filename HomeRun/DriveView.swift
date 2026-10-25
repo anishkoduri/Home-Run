@@ -19,6 +19,9 @@ struct DriveView: View {
     @State private var earningPeriod = "all"
     @State private var latestFirst = true
     @State private var editingTrip: Trip?
+    @State private var parkedEdit: Trip?
+    @State private var path = NavigationPath()
+    @State private var leavePrompt = false
 
     enum Section: String, CaseIterable, Identifiable {
         case requests = "Requests"
@@ -38,7 +41,7 @@ struct DriveView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     HStack(alignment: .firstTextBaseline) {
@@ -167,6 +170,34 @@ struct DriveView: View {
                 .presentationDetents([.medium])
             }
             .task { await watch { await load() } }
+            .onChange(of: model.driveRootTick) { _, _ in
+                if editingTrip != nil || declining != nil || countering != nil {
+                    leavePrompt = true
+                } else {
+                    path = NavigationPath()
+                }
+            }
+            .confirmationDialog("Leave this form?", isPresented: $leavePrompt, titleVisibility: .visible) {
+                Button("Keep draft") {
+                    parkedEdit = editingTrip ?? parkedEdit
+                    editingTrip = nil
+                    declining = nil
+                    countering = nil
+                    path = NavigationPath()
+                }
+                Button("Discard", role: .destructive) {
+                    parkedEdit = nil
+                    editingTrip = nil
+                    declining = nil
+                    countering = nil
+                    declineReason = ""
+                    counterReason = ""
+                    path = NavigationPath()
+                }
+                Button("Stay", role: .cancel) {}
+            } message: {
+                Text("This trip edit is only on this phone until you save it.")
+            }
             .sheet(item: $editingTrip) { trip in
                 TripEditor(trip: trip) {
                     editingTrip = nil
@@ -242,12 +273,12 @@ struct DriveView: View {
     private func tripRow(_ trip: Trip) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             CityRoute(origin: trip.originCity, destination: trip.destinationCity)
-            Text("\(Format.relative(trip.departureAt)) · \(trip.activeOrders ?? 0) of \(trip.maxOrders) spots")
+            Text("\(Format.relative(trip.departureAt)) · \(TripCopy.pickupLimit(trip))")
                 .font(Theme.text(.caption)).foregroundStyle(Theme.muted)
             Text(trip.status.replacingOccurrences(of: "_", with: " ").capitalized).font(Theme.text(.caption))
             if trip.status == "draft" || trip.status == "scheduled" || trip.status == "requests_closed" {
                 Button(trip.templateId == nil ? "Edit trip" : "Edit this date") {
-                    editingTrip = trip
+                    editingTrip = parkedEdit?.id == trip.id ? parkedEdit : trip
                 }
                 .font(Theme.text(.caption, weight: .semibold))
             }

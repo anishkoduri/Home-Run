@@ -180,8 +180,14 @@ struct SavedPlacesView: View {
             if places.isEmpty { Text("Saved places show up here.").foregroundStyle(Theme.muted) }
             ForEach(places) { place in
                 VStack(alignment: .leading) {
-                    Text(place.name).font(Theme.text(.body, weight: .semibold))
-                    Text(place.address).font(Theme.text(.caption)).foregroundStyle(Theme.muted)
+                    NavigationLink {
+                        FavoritePlaceView(place: place)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(place.name.isEmpty ? "Place unavailable" : place.name).font(Theme.text(.body, weight: .semibold))
+                            Text(place.address).font(Theme.text(.caption)).foregroundStyle(Theme.muted)
+                        }
+                    }
                     Button("Remove") { Task { await remove(place) } }
                         .font(Theme.text(.caption, weight: .semibold))
                         .foregroundStyle(Theme.bad)
@@ -319,7 +325,7 @@ struct DemoControlView: View {
         case 4: return "4 · One stop, two orders"
         case 5: return "5 · Catch the next trip"
         case 6: return "6 · Plans change"
-        case 7: return "7 · The last spot"
+        case 7: return "7 · The last pickup"
         case 8: return "8 · Make it right"
         case 9: return "9 · Welcome, Aggie"
         default: return "10 · Offline, still presentable"

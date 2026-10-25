@@ -5,7 +5,7 @@ import Testing
 struct PurchaseFlowTests {
     @Test func customerPaysTheStoreAndDeliveryStaysSeparate() async throws {
         let db = AppDatabase.testingStore()
-        let maya = try await signIn(db, email: "maya@demo.local", password: "demo")
+        let maya = try await signIn(db, email: "anishkoduri@tamu.edu", password: "demo")
         let jordan = try await signIn(db, email: "jordan@demo.local", password: "demo")
         let trips: [Trip] = try await send(db, "trips", token: jordan.token, query: ["mine": "1"])
         let trip = try #require(trips.first { $0.id == "demo-trip-jordan" })

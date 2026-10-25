@@ -65,9 +65,9 @@ enum AccountUse: String, Codable, CaseIterable, Identifiable {
 
     var detail: String {
         switch self {
-        case .order: return "Request food from students already driving."
-        case .deliver: return "Bring food when you're headed to College Station."
-        case .both: return "Order for yourself and bring food for others."
+        case .order: return "Start on ordering. You can still bring food with this account."
+        case .deliver: return "Start on bringing food. You can still order with this account."
+        case .both: return "Start on ordering. Switch to bringing food whenever you are driving."
         }
     }
 }
