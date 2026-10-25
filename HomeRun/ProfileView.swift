@@ -39,7 +39,7 @@ struct ProfileView: View {
                     Button("Sign out", role: .destructive) { Task { await model.signOut() } }
                 }
                 Section {
-                    Text("Howdy Haul coordinates deliveries only. Restaurant orders and delivery fees are paid outside the app.")
+                    Text("Home Run coordinates deliveries only. Restaurant orders and delivery fees are paid outside the app.")
                         .font(.caption).foregroundStyle(Theme.muted)
                 }
             }

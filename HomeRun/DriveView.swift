@@ -43,7 +43,7 @@ struct DriveView: View {
                         let pending = orders.filter { $0.status.isActiveDelivery }
                         Text("Active \(Fees.money(pending.reduce(0) { $0 + ($1.deliveryFee ?? 0) }))")
                         Text("Delivered \(Fees.money(delivered.reduce(0) { $0 + ($1.deliveryFee ?? 0) }))")
-                        Text("Customers pay you directly. Howdy Haul doesn't process payments.")
+                        Text("Customers pay you directly. Home Run doesn't process payments.")
                             .font(.caption).foregroundStyle(Theme.muted)
                     }
                 }

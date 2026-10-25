@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct HowdyHaulApp: App {
+struct HomeRunApp: App {
     @State private var model = AppModel()
 
     var body: some Scene {
@@ -19,7 +19,7 @@ struct RootView: View {
     var body: some View {
         Group {
             if model.restoring {
-                ProgressView("Loading Howdy Haul")
+                ProgressView("Loading Home Run")
             } else if model.user == nil {
                 AuthView()
             } else if model.profile == nil {

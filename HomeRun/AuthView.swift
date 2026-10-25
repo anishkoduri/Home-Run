@@ -21,9 +21,9 @@ struct AuthView: View {
                         .foregroundStyle(Theme.gold)
                         .background(Theme.maroon)
                         .clipShape(RoundedRectangle(cornerRadius: 10))
-                    Text("Howdy Haul").font(.title3.weight(.bold)).foregroundStyle(Theme.maroon)
+                    Text("Home Run").font(.title3.weight(.bold)).foregroundStyle(Theme.maroon)
                 }
-                Text(mode == .signIn ? "Welcome back" : "Join Howdy Haul")
+                Text(mode == .signIn ? "Welcome back" : "Join Home Run")
                     .font(.largeTitle.weight(.bold))
                     .foregroundStyle(Theme.maroon)
                 Text("Get food from back home brought by students already driving to College Station, or bring some yourself.")

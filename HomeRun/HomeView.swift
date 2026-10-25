@@ -85,7 +85,7 @@ struct HomeView: View {
                 .padding(20)
             }
             .background(Theme.cream)
-            .navigationTitle("Howdy Haul")
+            .navigationTitle("Home Run")
             .navigationDestination(for: String.self) { OrderDetailView(id: $0) }
             .refreshable { await load() }
             .task { await load() }

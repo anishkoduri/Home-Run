@@ -7,26 +7,26 @@
 	objects = {
 
 /* Begin PBXFileReference section */
-		A10000000000000000000001 /* HowdyHaul.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HowdyHaul.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A10000000000000000000001 /* HomeRun.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HomeRun.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		A10000000000000000000002 /* Exceptions for "HowdyHaul" folder in "HowdyHaul" target */ = {
+		A10000000000000000000002 /* Exceptions for "HomeRun" folder in "HomeRun" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
 			);
-			target = A10000000000000000000005 /* HowdyHaul */;
+			target = A10000000000000000000005 /* HomeRun */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		A10000000000000000000003 /* HowdyHaul */ = {
+		A10000000000000000000003 /* HomeRun */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				A10000000000000000000002 /* Exceptions for "HowdyHaul" folder in "HowdyHaul" target */,
+				A10000000000000000000002 /* Exceptions for "HomeRun" folder in "HomeRun" target */,
 			);
-			path = HowdyHaul;
+			path = HomeRun;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -45,7 +45,7 @@
 		A10000000000000000000010 = {
 			isa = PBXGroup;
 			children = (
-				A10000000000000000000003 /* HowdyHaul */,
+				A10000000000000000000003 /* HomeRun */,
 				A10000000000000000000011 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -53,7 +53,7 @@
 		A10000000000000000000011 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				A10000000000000000000001 /* HowdyHaul.app */,
+				A10000000000000000000001 /* HomeRun.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -61,9 +61,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		A10000000000000000000005 /* HowdyHaul */ = {
+		A10000000000000000000005 /* HomeRun */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = A10000000000000000000012 /* Build configuration list for PBXNativeTarget "HowdyHaul" */;
+			buildConfigurationList = A10000000000000000000012 /* Build configuration list for PBXNativeTarget "HomeRun" */;
 			buildPhases = (
 				A10000000000000000000006 /* Sources */,
 				A10000000000000000000004 /* Frameworks */,
@@ -73,11 +73,11 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				A10000000000000000000003 /* HowdyHaul */,
+				A10000000000000000000003 /* HomeRun */,
 			);
-			name = HowdyHaul;
-			productName = HowdyHaul;
-			productReference = A10000000000000000000001 /* HowdyHaul.app */;
+			name = HomeRun;
+			productName = HomeRun;
+			productReference = A10000000000000000000001 /* HomeRun.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -95,7 +95,7 @@
 					};
 				};
 			};
-			buildConfigurationList = A10000000000000000000013 /* Build configuration list for PBXProject "HowdyHaul" */;
+			buildConfigurationList = A10000000000000000000013 /* Build configuration list for PBXProject "HomeRun" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -109,7 +109,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				A10000000000000000000005 /* HowdyHaul */,
+				A10000000000000000000005 /* HomeRun */,
 			);
 		};
 /* End PBXProject section */
@@ -173,8 +173,8 @@
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = HowdyHaul/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "Howdy Haul";
+				INFOPLIST_FILE = HomeRun/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Home Run";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
@@ -183,7 +183,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.howdyhaul.ios;
+				PRODUCT_BUNDLE_IDENTIFIER = com.homerun.ios;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
@@ -202,8 +202,8 @@
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = HowdyHaul/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "Howdy Haul";
+				INFOPLIST_FILE = HomeRun/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Home Run";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
@@ -212,7 +212,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.howdyhaul.ios;
+				PRODUCT_BUNDLE_IDENTIFIER = com.homerun.ios;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
@@ -225,7 +225,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		A10000000000000000000013 /* Build configuration list for PBXProject "HowdyHaul" */ = {
+		A10000000000000000000013 /* Build configuration list for PBXProject "HomeRun" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				A10000000000000000000020 /* Debug */,
@@ -234,7 +234,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		A10000000000000000000012 /* Build configuration list for PBXNativeTarget "HowdyHaul" */ = {
+		A10000000000000000000012 /* Build configuration list for PBXNativeTarget "HomeRun" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				A10000000000000000000022 /* Debug */,

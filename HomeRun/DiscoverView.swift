@@ -204,7 +204,7 @@ struct RequestSheet: View {
                         .padding(12)
                         .background(Theme.tint)
                         .clipShape(RoundedRectangle(cornerRadius: 10))
-                    Text("Don't order food yet. Wait for the driver to accept. Howdy Haul doesn't process payments.")
+                    Text("Don't order food yet. Wait for the driver to accept. Home Run doesn't process payments.")
                         .font(.footnote).foregroundStyle(Theme.muted)
                     if let error { ErrorBanner(message: error) }
                     PrimaryButton(title: "Send request", busy: busy) { submit() }

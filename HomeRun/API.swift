@@ -56,7 +56,7 @@ struct APIClient {
         do {
             (responseData, response) = try await URLSession.shared.data(for: request)
         } catch {
-            throw APIError(message: "Can't reach Howdy Haul. Check the server address and your connection.")
+            throw APIError(message: "Can't reach Home Run. Check the server address and your connection.")
         }
         let status = (response as? HTTPURLResponse)?.statusCode ?? 500
         guard (200 ..< 300).contains(status) else {

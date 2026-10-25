@@ -90,7 +90,7 @@ struct OrderDetailView: View {
                     Task { await confirm(order) }
                 }
             } else if order.status == .delivered {
-                Text("Delivered. Pay the driver \(Fees.money(order.deliveryFee)) outside Howdy Haul.")
+                Text("Delivered. Pay the driver \(Fees.money(order.deliveryFee)) outside Home Run.")
             } else if order.status == .requested && role == "customer" {
                 Text("Waiting for the driver. Don't order from the restaurant yet.")
             } else {
@@ -140,7 +140,7 @@ struct OrderDetailView: View {
             if role == "customer", let handle = order.driver?.paymentHandle {
                 Text("Send to \(handle)").font(.caption)
             }
-            Text("Howdy Haul doesn't process or verify payments.").font(.caption).foregroundStyle(Theme.muted)
+            Text("Home Run doesn't process or verify payments.").font(.caption).foregroundStyle(Theme.muted)
         }
     }
 
