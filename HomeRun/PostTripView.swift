@@ -3,6 +3,7 @@ import SwiftUI
 struct PostTripView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.onTheRoad) private var onTheRoad
     @State private var origin = ""
     @State private var day = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
     @State private var time = Calendar.current.date(bySettingHour: 17, minute: 0, second: 0, of: Date()) ?? Date()
@@ -45,7 +46,8 @@ struct PostTripView: View {
         }
         .navigationTitle("Post a trip")
         .scrollContentBackground(.hidden)
-        .background(Theme.cream)
+        .background(onTheRoad ? Theme.road : Theme.cream)
+        .toolbarColorScheme(onTheRoad ? .dark : .light, for: .navigationBar)
     }
 
     private func findStop() async {

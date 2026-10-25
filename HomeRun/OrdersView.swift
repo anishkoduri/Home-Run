@@ -18,12 +18,22 @@ struct OrdersView: View {
                 if let error { ErrorBanner(message: error).padding(.horizontal, 20) }
                 List(shown) { order in
                     NavigationLink(value: order.id) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(order.restaurantName).fontWeight(.bold)
-                            Text("\(Format.shortId(order.id)) · \(order.trip?.originCity ?? "Trip")")
-                                .font(.caption).foregroundStyle(Theme.muted)
-                            Text(Fees.money(order.deliveryFee)).font(.caption).foregroundStyle(Theme.maroon)
+                        HStack(spacing: 12) {
+                            PlacePlate(name: order.restaurantName)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(order.restaurantName).font(.headline)
+                                if let trip = order.trip {
+                                    Text("\(trip.originCity) → \(order.destinationLabel)")
+                                        .font(.subheadline)
+                                        .foregroundStyle(Theme.muted)
+                                }
+                                Text("\(Format.shortId(order.id)) · \(Fees.money(order.deliveryFee))")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(Theme.ink)
+                                StatusPill(status: order.status)
+                            }
                         }
+                        .padding(.vertical, 6)
                     }
                     .listRowBackground(Theme.surface)
                 }
@@ -33,7 +43,7 @@ struct OrdersView: View {
             .navigationTitle("Orders")
             .navigationDestination(for: String.self) { OrderDetailView(id: $0) }
             .refreshable { await load() }
-            .task { await load() }
+            .task { await watch { await load() } }
         }
     }
 

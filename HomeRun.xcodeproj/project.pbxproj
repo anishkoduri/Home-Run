@@ -67,6 +67,7 @@
 			buildPhases = (
 				A10000000000000000000006 /* Sources */,
 				A10000000000000000000004 /* Frameworks */,
+				A10000000000000000000030 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -113,6 +114,16 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A10000000000000000000030 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		A10000000000000000000006 /* Sources */ = {
@@ -225,20 +236,20 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		A10000000000000000000013 /* Build configuration list for PBXProject "HomeRun" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				A10000000000000000000020 /* Debug */,
-				A10000000000000000000021 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
 		A10000000000000000000012 /* Build configuration list for PBXNativeTarget "HomeRun" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				A10000000000000000000022 /* Debug */,
 				A10000000000000000000023 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A10000000000000000000013 /* Build configuration list for PBXProject "HomeRun" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A10000000000000000000020 /* Debug */,
+				A10000000000000000000021 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

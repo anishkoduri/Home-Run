@@ -6,7 +6,7 @@ struct AuthView: View {
     @State private var name = ""
     @State private var email = ""
     @State private var password = ""
-    @State private var server = ""
+    @State private var use = AccountUse.both
     @State private var busy = false
     @State private var error: String?
 
@@ -15,22 +15,57 @@ struct AuthView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                HStack(spacing: 10) {
-                    Image(systemName: "car.fill")
-                        .frame(width: 34, height: 34)
-                        .foregroundStyle(Theme.gold)
-                        .background(Theme.maroon)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                    Text("Home Run").font(.title3.weight(.bold)).foregroundStyle(Theme.maroon)
+                HStack(alignment: .center, spacing: 14) {
+                    Image("BrandMark")
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 64, height: 64)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Home Run")
+                            .font(.headline.weight(.bold))
+                            .foregroundStyle(.white)
+                        Text(mode == .signIn ? "Welcome back" : "Join the trip")
+                            .font(.subheadline)
+                            .foregroundStyle(.white.opacity(0.85))
+                    }
+                    Spacer()
                 }
-                Text(mode == .signIn ? "Welcome back" : "Join Home Run")
-                    .font(.largeTitle.weight(.bold))
-                    .foregroundStyle(Theme.maroon)
-                Text("Get food from back home brought by students already driving to College Station, or bring some yourself.")
+                .padding(20)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Theme.maroon)
+                .padding(.horizontal, -24)
+                .padding(.top, -24)
+
+                Text("Your favorites.\nOn their way home.")
+                    .font(Theme.display(.largeTitle))
+                    .foregroundStyle(Theme.ink)
+                Text("Students already driving to College Station can bring food or groceries, or you can bring some on your own drive.")
                     .foregroundStyle(Theme.muted)
 
                 if mode == .signUp {
                     field("Your name", text: $name)
+                    Text("What do you want to do?").font(.footnote.weight(.semibold)).foregroundStyle(Theme.muted)
+                    ForEach(AccountUse.allCases) { option in
+                        Button {
+                            use = option
+                        } label: {
+                            HStack(alignment: .top, spacing: 10) {
+                                Image(systemName: use == option ? "checkmark.circle.fill" : "circle")
+                                    .foregroundStyle(Theme.maroon)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(option.title).fontWeight(.semibold).foregroundStyle(Theme.ink)
+                                    Text(option.detail).font(.caption).foregroundStyle(Theme.muted)
+                                }
+                                Spacer()
+                            }
+                            .padding(12)
+                            .background(.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
                 field("Email", text: $email)
                     .textInputAutocapitalization(.never)
@@ -39,12 +74,6 @@ struct AuthView: View {
                     .padding(12)
                     .background(.white)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
-                field("Server", text: $server)
-                    .textInputAutocapitalization(.never)
-                    .keyboardType(.URL)
-                Text("The Home Run dev server. The iPhone simulator can use http://127.0.0.1:5173.")
-                    .font(.caption)
-                    .foregroundStyle(Theme.muted)
                 if let error { ErrorBanner(message: error) }
                 PrimaryButton(title: mode == .signIn ? "Sign in" : "Create account", busy: busy) { submit() }
                 Button(mode == .signIn ? "Create an account" : "Sign in") {
@@ -53,14 +82,13 @@ struct AuthView: View {
                 }
                 .fontWeight(.bold)
                 .frame(maxWidth: .infinity)
-                Text("Student-run project. Not affiliated with any university. Accounts stay on the server you enter above.")
+                Text("Student-run project. Not affiliated with any university. Accounts stay on this phone.")
                     .font(.caption2)
                     .foregroundStyle(Theme.muted)
                     .frame(maxWidth: .infinity)
             }
             .padding(24)
         }
-        .onAppear { server = model.serverURL }
     }
 
     private func field(_ title: String, text: Binding<String>) -> some View {
@@ -83,7 +111,6 @@ struct AuthView: View {
             error = "Use a password with at least 8 characters."
             return
         }
-        model.serverURL = server.trimmingCharacters(in: .whitespacesAndNewlines)
         busy = true
         Task {
             defer { busy = false }
@@ -91,7 +118,7 @@ struct AuthView: View {
                 if mode == .signIn {
                     try await model.signIn(email: email.trimmingCharacters(in: .whitespaces), password: password)
                 } else {
-                    try await model.signUp(name: name.trimmingCharacters(in: .whitespaces), email: email.trimmingCharacters(in: .whitespaces), password: password)
+                    try await model.signUp(name: name.trimmingCharacters(in: .whitespaces), email: email.trimmingCharacters(in: .whitespaces), password: password, use: use)
                 }
             } catch {
                 self.error = error.localizedDescription

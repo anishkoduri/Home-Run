@@ -12,6 +12,8 @@ struct OrderDetailView: View {
     @State private var ready = Date().addingTimeInterval(3600)
     @State private var instructions = ""
     @State private var ordered = false
+    @State private var confirmCancel = false
+    @State private var routePath: [[Double]]?
 
     var body: some View {
         ScrollView {
@@ -26,7 +28,7 @@ struct OrderDetailView: View {
         .background(Theme.cream)
         .navigationTitle(order?.restaurantName ?? "Order")
         .navigationBarTitleDisplayMode(.inline)
-        .task { await load() }
+        .task { await watch { await load() } }
     }
 
     @ViewBuilder
@@ -48,12 +50,17 @@ struct OrderDetailView: View {
             timeline(order)
             facts(order, role: role)
             if let trip = order.trip {
-                RouteMap(path: [
+                RouteMap(path: routePath ?? [
                     [trip.originLat, trip.originLng],
                     [order.restaurantLat, order.restaurantLng],
                     [order.destinationLat, order.destinationLng],
                     [trip.destinationLat, trip.destinationLng],
                 ])
+                Text(routePath == nil
+                     ? "Straight line between the posted stops. A road route was not available, and this is not live tracking."
+                     : "Road route from the routing service. This map is not live tracking.")
+                    .font(.caption)
+                    .foregroundStyle(Theme.muted)
             }
         }
         .padding(20)
@@ -97,10 +104,16 @@ struct OrderDetailView: View {
                 Text(order.status.label)
             }
             if (role == "customer" && order.status.customerCanCancel) || (role == "driver" && order.status.driverCanCancel) {
-                Button("Cancel delivery") { Task { await setStatus(order, .cancelled) } }
+                Button("Cancel delivery") { confirmCancel = true }
                     .foregroundStyle(Theme.bad)
                     .padding(.top, 6)
             }
+        }
+        .confirmationDialog("Cancel this delivery?", isPresented: $confirmCancel, titleVisibility: .visible) {
+            Button("Cancel delivery", role: .destructive) { Task { await setStatus(order, .cancelled) } }
+            Button("Keep it", role: .cancel) {}
+        } message: {
+            Text(role == "customer" && order.status == .requested ? "The driver has not accepted yet." : "This stops the delivery.")
         }
     }
 
@@ -113,18 +126,21 @@ struct OrderDetailView: View {
             ("On the way", order.onTheWayAt),
             ("Delivered", order.deliveredAt),
         ]
-        return Card {
-            Text("Progress").font(.headline)
-            ForEach(Array(steps.enumerated()), id: \.offset) { _, step in
-                HStack {
+        return VStack(alignment: .leading, spacing: 12) {
+            Text("Progress").font(.title3.weight(.bold))
+            ForEach(steps, id: \.0) { step in
+                HStack(alignment: .top, spacing: 10) {
                     Image(systemName: step.1 == nil ? "circle" : "checkmark.circle.fill")
                         .foregroundStyle(step.1 == nil ? Theme.muted : Theme.good)
-                    VStack(alignment: .leading) {
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 2) {
                         Text(step.0)
-                        Text(step.1.map(Format.dayTime) ?? "Not yet").font(.caption).foregroundStyle(Theme.muted)
+                        Text(step.1.map(Format.dayTime) ?? "Not yet").font(.subheadline).foregroundStyle(Theme.muted)
                     }
                 }
+                .accessibilityElement(children: .combine)
             }
+            Hairline()
         }
     }
 
@@ -132,8 +148,14 @@ struct OrderDetailView: View {
         Card {
             Text("Restaurant").font(.headline)
             Text(order.restaurantAddress ?? "")
+            if let website = restaurantURL(order.restaurantWebsite) {
+                Link("Restaurant website", destination: website).fontWeight(.bold)
+            }
             Text("Handoff").font(.headline).padding(.top, 6)
             Text(order.destinationLabel)
+            if let arrival = order.estimatedArrivalAt {
+                Text("Estimated around \(Format.time(arrival))").font(.caption).foregroundStyle(Theme.muted)
+            }
             Text("Fee").font(.headline).padding(.top, 6)
             Text(Fees.money(order.deliveryFee)).font(.title3.weight(.bold)).foregroundStyle(Theme.maroon)
             Text(Fees.formula).font(.caption).foregroundStyle(Theme.muted)
@@ -149,8 +171,26 @@ struct OrderDetailView: View {
             let envelope: OrderEnvelope = try await model.client().store("orders", query: ["id": id])
             order = envelope.order
             if envelope.order == nil { error = "Order not found." }
+            else if routePath == nil, let order = envelope.order { await loadRoute(order) }
         } catch {
             self.error = error.localizedDescription
+        }
+    }
+
+    private func loadRoute(_ order: Order) async {
+        guard let trip = order.trip else { return }
+        do {
+            let result = try await Routing.estimate(
+                client: try model.client(),
+                origin: LatLng(lat: trip.originLat, lng: trip.originLng),
+                destination: LatLng(lat: trip.destinationLat, lng: trip.destinationLng),
+                stops: (trip.stops ?? []).map { LatLng(lat: $0.lat, lng: $0.lng) },
+                restaurant: LatLng(lat: order.restaurantLat, lng: order.restaurantLng),
+                dropoff: LatLng(lat: order.destinationLat, lng: order.destinationLng)
+            )
+            routePath = result.0.withPath
+        } catch {
+            routePath = nil
         }
     }
 
@@ -159,6 +199,7 @@ struct OrderDetailView: View {
         defer { busy = false }
         do {
             let updated: Order = try await model.client().store("orders", method: "PATCH", query: ["id": order.id], body: StatusPatch(status: status.rawValue))
+            Haptics.success()
             self.order = updated
             error = nil
             await model.refreshBadges()
@@ -181,6 +222,7 @@ struct OrderDetailView: View {
                 status: order.status == .restaurantConfirmed ? nil : OrderStatus.restaurantConfirmed.rawValue
             )
             let updated: Order = try await model.client().store("orders", method: "PATCH", query: ["id": order.id], body: patch)
+            Haptics.success()
             self.order = updated
             error = nil
         } catch {
@@ -205,6 +247,8 @@ struct RouteMap: View {
             }
         }
         .frame(height: 220)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Map of the delivery route")
     }
 }

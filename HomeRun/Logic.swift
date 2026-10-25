@@ -82,7 +82,15 @@ enum Format {
     }
 
     static func firstName(_ name: String?) -> String {
-        name?.split(separator: " ").first.map(String.init) ?? "there"
+        personalName(name) ?? "there"
+    }
+
+    /// A spoken first name. Numeric ids and single characters stay off greetings.
+    static func personalName(_ name: String?) -> String? {
+        guard let raw = name?.split(separator: " ").first else { return nil }
+        let word = String(raw).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard word.count >= 2, word.contains(where: \.isLetter), !word.allSatisfy(\.isNumber) else { return nil }
+        return word
     }
 
     static func shortId(_ id: String) -> String { "HR-\(id.prefix(4).uppercased())" }
@@ -104,11 +112,31 @@ enum Format {
     }
 
     static func parse(_ iso: String) -> Date? {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = formatter.date(from: iso) { return date }
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter.date(from: iso)
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let plain = ISO8601DateFormatter()
+        plain.formatOptions = [.withInternetDateTime]
+        for candidate in [iso, iso.replacingOccurrences(of: " ", with: "T")] {
+            if let date = fractional.date(from: candidate) ?? plain.date(from: candidate) { return date }
+            let shortened = trimFraction(candidate)
+            if shortened != candidate, let date = fractional.date(from: shortened) ?? plain.date(from: shortened) {
+                return date
+            }
+        }
+        return nil
+    }
+
+    private static func trimFraction(_ iso: String) -> String {
+        guard let dot = iso.firstIndex(of: ".") else { return iso }
+        var index = iso.index(after: dot)
+        var digits = 0
+        while index < iso.endIndex, iso[index].isNumber {
+            digits += 1
+            index = iso.index(after: index)
+        }
+        guard digits > 3 else { return iso }
+        let keep = iso.index(dot, offsetBy: 4)
+        return String(iso[..<keep] + iso[index...])
     }
 }
 
@@ -119,13 +147,13 @@ func initials(_ name: String?) -> String {
 }
 
 enum Routing {
-    static func estimate(client: APIClient, origin: LatLng, destination: LatLng, stops: [LatLng], restaurant: LatLng, dropoff: LatLng) async -> (DetourEstimate, String?) {
+    static func estimate(client: APIClient, origin: LatLng, destination: LatLng, stops: [LatLng], restaurant: LatLng, dropoff: LatLng) async throws -> (DetourEstimate, String?) {
         let body = DetourBody(origin: origin, destination: destination, stops: stops, restaurant: restaurant, dropoff: dropoff)
         do {
             let estimate: DetourEstimate = try await client.geo("detour", method: "POST", body: body)
             return (estimate, nil)
         } catch let error as APIError where error.code == "unauthenticated" {
-            return (straightLine(body), error.message)
+            throw error
         } catch {
             return (straightLine(body), (error as? LocalizedError)?.errorDescription ?? "Routing is unavailable.")
         }
@@ -172,6 +200,15 @@ enum Routing {
 
     private static func minutes(_ distance: Double) -> Double { ((distance * 1.3) / 80) * 60 }
     private static func rounded(_ value: Double) -> Double { (value * 10).rounded() / 10 }
+}
+
+func watch(_ load: () async -> Void) async {
+    await load()
+    while !Task.isCancelled {
+        try? await Task.sleep(for: .seconds(20))
+        guard !Task.isCancelled else { return }
+        await load()
+    }
 }
 
 struct LatLng: Codable, Equatable {

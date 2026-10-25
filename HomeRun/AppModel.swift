@@ -3,9 +3,6 @@ import Observation
 
 @Observable
 final class AppModel {
-    var serverURL: String {
-        didSet { UserDefaults.standard.set(serverURL, forKey: "serverURL") }
-    }
     var token: String? {
         didSet {
             if let token { UserDefaults.standard.set(token, forKey: "token") }
@@ -18,48 +15,32 @@ final class AppModel {
     var restoreError: String?
     var ordersBadge = 0
     var driveBadge = 0
+    var side = AppSide.ordering
+
+    enum AppSide: Equatable { case ordering, driving }
 
     init() {
-        serverURL = UserDefaults.standard.string(forKey: "serverURL") ?? "http://127.0.0.1:5173"
         token = UserDefaults.standard.string(forKey: "token")
     }
 
     func client() throws -> APIClient {
-        let trimmed = serverURL.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        guard let url = URL(string: trimmed), url.scheme == "http" || url.scheme == "https" else {
-            throw APIError(message: "Enter a server address like http://127.0.0.1:5173.")
-        }
-        return APIClient(baseURL: url, token: token)
+        APIClient(token: token)
     }
 
     func restore() async {
         restoring = true
         defer { restoring = false }
-        guard token != nil else {
-            user = nil
-            profile = nil
-            return
-        }
-        do {
-            let session: SessionResponse = try await client().store("session")
-            user = session.user
-            profile = session.profile
-            restoreError = session.profile == nil ? "Your profile couldn't be loaded." : nil
-            await refreshBadges()
-        } catch let error as APIError where error.code == "unauthenticated" {
-            signOutLocal()
-        } catch {
-            restoreError = error.localizedDescription
-        }
+        signOutLocal()
+        await signInDemo()
     }
 
     func signIn(email: String, password: String) async throws {
-        let response: AuthResponse = try await client().store("signin", method: "POST", body: Credentials(email: email, password: password, displayName: nil))
+        let response: AuthResponse = try await client().store("signin", method: "POST", body: Credentials(email: email, password: password, displayName: nil, intent: nil))
         apply(response)
     }
 
-    func signUp(name: String, email: String, password: String) async throws {
-        let response: AuthResponse = try await client().store("signup", method: "POST", body: Credentials(email: email, password: password, displayName: name))
+    func signUp(name: String, email: String, password: String, use: AccountUse) async throws {
+        let response: AuthResponse = try await client().store("signup", method: "POST", body: Credentials(email: email, password: password, displayName: name, intent: use.rawValue))
         apply(response)
     }
 
@@ -82,7 +63,21 @@ final class AppModel {
         user = response.user
         profile = response.profile
         restoreError = nil
+        alignSide()
         Task { await refreshBadges() }
+    }
+
+    private func signInDemo() async {
+        do {
+            try await signIn(email: "1", password: "1")
+        } catch {
+            restoreError = error.localizedDescription
+        }
+    }
+
+    private func alignSide() {
+        if profile?.use == .deliver { side = .driving }
+        if profile?.use == .order { side = .ordering }
     }
 
     private func signOutLocal() {
@@ -98,6 +93,7 @@ private struct Credentials: Encodable {
     var email: String
     var password: String
     var displayName: String?
+    var intent: String?
 }
 
 private struct Okay: Decodable { var ok: Bool }

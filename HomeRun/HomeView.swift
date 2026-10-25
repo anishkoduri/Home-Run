@@ -2,94 +2,227 @@ import SwiftUI
 
 struct HomeView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var typeSize
+    @FocusState private var searchFocused: Bool
     @State private var city = Places.origins[0].name
     @State private var query = ""
     @State private var trips: [Trip] = []
     @State private var orders: [Order] = []
     @State private var error: String?
+    @State private var loaded = false
+    @State private var expandedTripID: String?
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    Text("\(Format.greeting()), \(Format.firstName(model.profile?.displayName))")
-                        .font(.footnote.weight(.bold))
-                        .foregroundStyle(Theme.coral)
-                    Text("What should someone bring back?")
-                        .font(.title.weight(.bold))
-                        .foregroundStyle(Theme.maroon)
-                    Text("Find a student already driving to College Station and add your restaurant pickup to their trip.")
-                        .foregroundStyle(Theme.muted)
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Restaurant city").font(.caption.weight(.semibold)).foregroundStyle(.white.opacity(0.8))
-                        Picker("City", selection: $city) {
-                            ForEach(Places.origins) { Text($0.name).tag($0.name) }
-                        }
-                        .pickerStyle(.menu)
-                        .padding(8)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                        TextField("e.g. Whataburger", text: $query)
-                            .padding(12)
-                            .background(.white)
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
-                        NavigationLink {
-                            DiscoverView(initialCity: city, initialQuery: query)
-                        } label: {
-                            Text("Find drivers")
-                                .fontWeight(.bold)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .foregroundStyle(Theme.maroon)
-                                .background(Theme.gold)
-                                .clipShape(RoundedRectangle(cornerRadius: 11))
-                        }
+                VStack(alignment: .leading, spacing: 0) {
+                    hero
+                    pickupBar
+                    VStack(alignment: .leading, spacing: 28) {
+                        if let error { ErrorBanner(message: error) }
+                        activeOrders
+                        upcoming
                     }
-                    .padding(16)
-                    .background(Theme.maroon)
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
-
-                    if let error { ErrorBanner(message: error) }
-
-                    let active = orders.filter { !$0.status.isTerminal }.prefix(3)
-                    if !active.isEmpty {
-                        Text("Your active orders").font(.title3.weight(.bold))
-                        ForEach(active) { order in
-                            NavigationLink(value: order.id) {
-                                Card {
-                                    HStack {
-                                        VStack(alignment: .leading) {
-                                            Text(order.restaurantName).fontWeight(.bold).foregroundStyle(Theme.ink)
-                                            Text(Format.relative(order.trip?.departureAt ?? order.createdAt))
-                                                .font(.caption).foregroundStyle(Theme.muted)
-                                        }
-                                        Spacer()
-                                        StatusPill(status: order.status)
-                                    }
-                                }
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-
-                    Text("Upcoming trips").font(.title3.weight(.bold))
-                    if trips.isEmpty {
-                        Text("When students post drives to College Station, they'll show up here.")
-                            .foregroundStyle(Theme.muted)
-                    } else {
-                        ForEach(trips) { trip in TripSummary(trip: trip) }
-                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 28)
+                    .padding(.bottom, 32)
                 }
-                .padding(20)
             }
             .background(Theme.cream)
-            .navigationTitle("Home Run")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(Theme.maroon, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
             .navigationDestination(for: String.self) { OrderDetailView(id: $0) }
             .refreshable { await load() }
-            .task { await load() }
+            .task { await watch { await load() } }
+            .sensoryFeedback(.selection, trigger: expandedTripID)
         }
+    }
+
+    private var hero: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Home Run")
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(.white)
+                    Text(greeting)
+                        .font(.subheadline)
+                        .foregroundStyle(.white.opacity(0.85))
+                }
+                .accessibilityElement(children: .combine)
+                Spacer(minLength: 8)
+                Image("BrandMark")
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 44, height: 44)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .accessibilityHidden(true)
+            }
+            if typeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 16) {
+                    headline
+                    FoodPlate()
+                }
+            } else {
+                HStack(alignment: .bottom, spacing: 12) {
+                    headline
+                    FoodPlate()
+                }
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 4)
+        .padding(.bottom, 20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.maroon.ignoresSafeArea(edges: .top))
+    }
+
+    private var headline: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Your favorites.\nOn their way home.")
+                .font(Theme.display(.largeTitle))
+                .foregroundStyle(.white)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("Students already driving to College Station can bring food or groceries from along the trip.")
+                .font(.subheadline)
+                .foregroundStyle(.white.opacity(0.88))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var greeting: String {
+        if let name = Format.personalName(model.profile?.displayName) {
+            return "\(Format.greeting()), \(name)"
+        }
+        return Format.greeting()
+    }
+
+    private var pickupBar: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Find a pickup")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(Theme.ink)
+                Spacer()
+                Menu {
+                    ForEach(Places.origins) { origin in
+                        Button(origin.name) { city = origin.name }
+                    }
+                } label: {
+                    Text(city)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Theme.maroon)
+                        .lineLimit(1)
+                }
+                .accessibilityLabel("Restaurant city, \(city)")
+            }
+            HStack(spacing: 8) {
+                TextField("Restaurant, store, or meal", text: $query)
+                    .focused($searchFocused)
+                    .textFieldStyle(.plain)
+                    .submitLabel(.search)
+                    .frame(minHeight: 44)
+                NavigationLink {
+                    DiscoverView(initialCity: city, initialQuery: query, embedded: true)
+                } label: {
+                    Image(systemName: "arrow.right")
+                        .font(.body.weight(.bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 44, height: 44)
+                        .background(Theme.maroon)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+                .buttonStyle(PressStyle())
+                .accessibilityLabel("Find a pickup")
+                .accessibilityHint("Opens restaurant search for \(city)")
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.surface)
+        .overlay(alignment: .bottom) { Hairline() }
+    }
+
+    @ViewBuilder
+    private var activeOrders: some View {
+        let active = orders.filter { !$0.status.isTerminal }.prefix(3)
+        if !active.isEmpty {
+            VStack(alignment: .leading, spacing: 0) {
+                Text("In motion")
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(Theme.ink)
+                    .padding(.bottom, 8)
+                ForEach(active) { order in
+                    NavigationLink(value: order.id) {
+                        HStack(alignment: .center, spacing: 12) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(order.restaurantName)
+                                    .font(.headline)
+                                    .foregroundStyle(Theme.ink)
+                                Text(order.trip.map { "\($0.originCity) → \(order.destinationLabel)" } ?? order.destinationLabel)
+                                    .font(.subheadline)
+                                    .foregroundStyle(Theme.muted)
+                            }
+                            Spacer(minLength: 8)
+                            StatusPill(status: order.status)
+                        }
+                        .padding(.vertical, 14)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Opens this order")
+                    Hairline()
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var upcoming: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Trips to College Station")
+                .font(.title3.weight(.bold))
+                .foregroundStyle(Theme.ink)
+            if !loaded && error == nil {
+                ProgressView("Loading trips")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else if trips.isEmpty {
+                emptyTrips
+            } else {
+                ForEach(trips) { trip in
+                    TripLane(
+                        trip: trip,
+                        expanded: expandedTripID == trip.id,
+                        reduceMotion: reduceMotion
+                    ) {
+                        withAnimation(reduceMotion ? nil : .snappy(duration: 0.35)) {
+                            expandedTripID = expandedTripID == trip.id ? nil : trip.id
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var emptyTrips: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            PlateSketch()
+            Text("No one is driving back yet")
+                .font(.title3.weight(.bold))
+                .foregroundStyle(Theme.ink)
+            Text("When a student posts a trip to College Station, it shows up here. Find a pickup above, or bring food if you are the one driving.")
+                .font(.subheadline)
+                .foregroundStyle(Theme.muted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 8)
     }
 
     private func load() async {
@@ -98,25 +231,105 @@ struct HomeView: View {
             trips = try await client.store("trips", query: ["limit": "6"])
             orders = try await client.store("orders", query: ["role": "customer"])
             error = nil
+            loaded = true
         } catch {
             self.error = error.localizedDescription
+            loaded = true
         }
     }
 }
 
-struct TripSummary: View {
+private struct TripLane: View {
     var trip: Trip
+    var expanded: Bool
+    var reduceMotion: Bool
+    var toggle: () -> Void
+
     var body: some View {
-        Card {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("\(trip.originCity) → \(trip.destinationCity)").font(.headline).foregroundStyle(Theme.maroon)
-                Text(Format.relative(trip.departureAt)).font(.subheadline).foregroundStyle(Theme.muted)
-                Text("\(trip.activeOrders ?? 0) of \(trip.maxOrders) spots taken")
-                    .font(.caption).foregroundStyle(Theme.muted)
-                if let name = trip.driver?.displayName {
-                    Text(name).font(.caption.weight(.semibold))
+        VStack(alignment: .leading, spacing: 0) {
+            Button(action: toggle) {
+                VStack(alignment: .leading, spacing: 8) {
+                    CityRoute(origin: trip.originCity, destination: trip.destinationCity)
+                    Text(Format.relative(trip.departureAt))
+                        .font(.subheadline)
+                        .foregroundStyle(Theme.muted)
+                    HStack {
+                        Text(spots)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Theme.ink)
+                        Spacer()
+                        Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(Theme.muted)
+                            .accessibilityHidden(true)
+                    }
+                    if let name = Format.personalName(trip.driver?.displayName) {
+                        Text(name)
+                            .font(.subheadline)
+                            .foregroundStyle(Theme.muted)
+                    }
+                }
+                .padding(.vertical, 16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(trip.originCity) to \(trip.destinationCity), \(Format.relative(trip.departureAt)), \(spots)")
+            .accessibilityHint(expanded ? "Hides the route" : "Shows the posted route")
+            .accessibilityAddTraits(expanded ? .isSelected : [])
+
+            if expanded {
+                TripRouteDetail(trip: trip)
+                    .padding(.bottom, 16)
+                    .transition(reduceMotion ? .identity : .opacity.combined(with: .move(edge: .top)))
+            }
+            Hairline()
+        }
+    }
+
+    private var spots: String {
+        let taken = trip.activeOrders ?? 0
+        let open = max(0, trip.maxOrders - taken)
+        if open == 0 { return "No spots left · \(taken) of \(trip.maxOrders)" }
+        return "\(open) of \(trip.maxOrders) spots open"
+    }
+}
+
+private struct TripRouteDetail: View {
+    var trip: Trip
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            RouteSketch(origin: trip.originCity, destination: trip.destinationCity)
+            if let stops = trip.stops, !stops.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Stops they already planned")
+                        .font(.subheadline.weight(.bold))
+                    ForEach(stops, id: \.stopOrder) { stop in
+                        Text(stop.restaurantName)
+                            .font(.subheadline)
+                            .foregroundStyle(Theme.ink)
+                    }
                 }
             }
+            if let notes = trip.notes, !notes.isEmpty {
+                Text(notes)
+                    .font(.subheadline)
+                    .foregroundStyle(Theme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            NavigationLink {
+                DiscoverView(initialCity: trip.originCity, initialQuery: "", focusTripID: trip.id, embedded: true)
+            } label: {
+                Text("Find a pickup on this trip")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, minHeight: 48)
+                    .background(Theme.maroon)
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.radiusControl, style: .continuous))
+            }
+            .buttonStyle(PressStyle())
+            .disabled((trip.activeOrders ?? 0) >= trip.maxOrders)
         }
     }
 }

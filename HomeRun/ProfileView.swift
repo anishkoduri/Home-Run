@@ -4,7 +4,6 @@ struct ProfileView: View {
     @Environment(AppModel.self) private var model
     @State private var name = ""
     @State private var handle = ""
-    @State private var server = ""
     @State private var busy = false
     @State private var saved = false
     @State private var error: String?
@@ -16,8 +15,9 @@ struct ProfileView: View {
                     HStack(spacing: 12) {
                         Avatar(name: model.profile?.displayName)
                         VStack(alignment: .leading) {
-                            Text(model.profile?.displayName ?? "").font(.headline)
+                            Text(Format.personalName(model.profile?.displayName) ?? "Add your name").font(.headline)
                             Text(model.user?.email ?? "").foregroundStyle(Theme.muted)
+                            Text(model.profile?.use.title ?? "").font(.caption).foregroundStyle(Theme.maroon)
                         }
                     }
                 }
@@ -27,13 +27,6 @@ struct ProfileView: View {
                     if let error { ErrorBanner(message: error) }
                     if saved { Text("Saved").foregroundStyle(Theme.good) }
                     Button(busy ? "Saving…" : "Save profile") { save() }.disabled(busy)
-                }
-                Section("Server") {
-                    TextField("Server address", text: $server)
-                        .textInputAutocapitalization(.never)
-                        .keyboardType(.URL)
-                    Text("Accounts and orders live on this Home Run server.")
-                        .font(.caption).foregroundStyle(Theme.muted)
                 }
                 Section {
                     Button("Sign out", role: .destructive) { Task { await model.signOut() } }
@@ -49,9 +42,7 @@ struct ProfileView: View {
             .onAppear {
                 name = model.profile?.displayName ?? ""
                 handle = model.profile?.paymentHandle ?? ""
-                server = model.serverURL
             }
-            .onChange(of: server) { _, value in model.serverURL = value }
         }
     }
 

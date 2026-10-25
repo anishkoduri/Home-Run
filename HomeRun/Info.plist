@@ -2,12 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>NSAppTransportSecurity</key>
+	<key>GOOGLE_MAPS_API_KEY</key>
+	<string></string>
+	<key>UILaunchScreen</key>
 	<dict>
-		<key>NSAllowsArbitraryLoads</key>
-		<true/>
-		<key>NSAllowsLocalNetworking</key>
-		<true/>
+		<key>UIColorName</key>
+		<string>LaunchMaroon</string>
 	</dict>
 </dict>
 </plist>

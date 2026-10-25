@@ -49,12 +49,36 @@ struct SessionUser: Codable, Equatable {
     var email: String
 }
 
+enum AccountUse: String, Codable, CaseIterable, Identifiable {
+    case order, deliver, both
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .order: return "I want to order"
+        case .deliver: return "I want to deliver"
+        case .both: return "Both"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .order: return "Request food from students already driving."
+        case .deliver: return "Bring food when you're headed to College Station."
+        case .both: return "Order for yourself and bring food for others."
+        }
+    }
+}
+
 struct Profile: Codable, Equatable, Identifiable {
     var id: String
     var displayName: String
     var avatarUrl: String?
     var paymentHandle: String?
     var createdAt: String?
+    var intent: String?
+
+    var use: AccountUse { AccountUse(rawValue: intent ?? "") ?? .both }
 }
 
 struct TripStop: Codable, Identifiable, Equatable {
