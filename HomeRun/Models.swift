@@ -189,6 +189,19 @@ struct Order: Codable, Identifiable, Equatable {
     var itemQuantity: String? = nil
     var fragile: Bool? = nil
     var bulkyItem: Bool? = nil
+    var offerRunnerId: String? = nil
+    var offerCents: Int? = nil
+    var offerShareCents: Int? = nil
+    var offerExpiresAt: String? = nil
+    var offerTripId: String? = nil
+    var offerDistanceKind: String? = nil
+    var offerMeters: Double? = nil
+    var offerSeconds: Double? = nil
+    var offerIncremental: Bool? = nil
+    var pickupCity: String? = nil
+    var pickupUnit: String? = nil
+    var locationResolved: Bool? = nil
+    var feeLockedCents: Int? = nil
     var confirmationPin: String?
     var pinAttempts: Int?
     var pickupName: String?
@@ -249,7 +262,9 @@ extension Order {
             return status.label
         }
         switch status {
-        case .requested: return "Awaiting runner"
+        case .requested:
+            if offerRunnerId != nil && driverId.isEmpty { return "Delivery offer waiting" }
+            return "Awaiting runner"
         case .accepted: return handoffComplete ? "Pickup details ready" : "Awaiting pickup details"
         case .restaurantConfirmed:
             if isPersonalPickup && detailsNeedReview { return "Pickup arranged" }

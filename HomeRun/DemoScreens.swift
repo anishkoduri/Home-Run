@@ -110,8 +110,8 @@ struct SavedRequestsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Saving a request does not book a trip or charge a fee.").font(Theme.text(.caption)).foregroundStyle(Theme.muted)
-                TextField("Pickup city", text: $city).padding(12).sketchPanel()
-                TextField("Place, optional", text: $place).padding(12).sketchPanel()
+                EntryField("Pickup city", text: $city).padding(12).sketchPanel()
+                EntryField("Place, optional", text: $place).padding(12).sketchPanel()
                 if let error { ErrorBanner(message: error) }
                 PrimaryButton(title: "Save request") { Task { await save() } }
                 ForEach(rows) { row in
@@ -285,7 +285,7 @@ struct DemoControlView: View {
                 Button("Advance 5 minutes") { DemoClock.advance(by: 5 * 60); message = "Clock moved 5 minutes." }
                 Button("Advance 15 minutes") { DemoClock.advance(by: 15 * 60); message = "Clock moved 15 minutes." }
                 Button("Advance 1 day") { DemoClock.advance(by: 86_400); message = "Clock moved 1 day." }
-                TextField("City to publish", text: $city).padding(12).sketchPanel()
+                EntryField("City to publish", text: $city).padding(12).sketchPanel()
                 Button("Publish a matching trip") { Task { await publish() } }
                 Text("Presenter scenarios").font(Theme.section())
                 Text("Each one resets fictional demo records, then leaves the shared orders and trips ready to use on the normal screens. Account 1 is left alone.").font(Theme.text(.caption)).foregroundStyle(Theme.muted)

@@ -5,6 +5,8 @@ import SwiftUI
 struct OrderDetailView: View {
     @Environment(AppModel.self) private var model
     var id: String
+    /// Opened from the runner's request list. Shows the accept screen, never the customer's detail form.
+    var forRunner = false
     @State private var order: Order?
     @State private var error: String?
     @State private var busy = false
@@ -84,7 +86,15 @@ struct OrderDetailView: View {
 
     @ViewBuilder
     private func content(_ order: Order) -> some View {
-        let role = order.driverId == model.user?.id ? "driver" : "customer"
+        let role: String = {
+            let driving = forRunner || model.side == .driving
+            if driving, !order.driverId.isEmpty, order.driverId == model.user?.id { return "driver" }
+            if driving, order.status == .requested, order.driverId.isEmpty { return "marketplace" }
+            if driving { return order.driverId == model.user?.id ? "driver" : "marketplace" }
+            if !order.driverId.isEmpty, order.driverId == model.user?.id { return "driver" }
+            if order.customerId == model.user?.id { return "customer" }
+            return "marketplace"
+        }()
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 VStack(alignment: .leading) {
@@ -98,6 +108,9 @@ struct OrderDetailView: View {
             }
             if let error { ErrorBanner(message: error) }
             actions(order, role: role)
+            if role == "customer", !order.driverId.isEmpty {
+                DriverTrackMap(order: order)
+            }
             timeline(order)
             facts(order, role: role)
             conversation
@@ -129,7 +142,42 @@ struct OrderDetailView: View {
     @ViewBuilder
     private func actions(_ order: Order, role: String) -> some View {
         Card {
-            if role == "driver" && order.status == .requested {
+            if role == "customer", order.driverId.isEmpty, let cents = order.offerCents {
+                Text("A runner offered \(Fees.money(Double(cents) / 100)).")
+                    .font(Theme.text(.headline, weight: .semibold))
+                Text("The runner earns \(Fees.money(Double(order.offerShareCents ?? 0) / 100)). Home Run keeps the 15% difference. Merchandise is paid to the store, not to the runner.")
+                    .font(Theme.text(.caption)).foregroundStyle(Theme.muted)
+                Text(RequestRanking.distanceCaption(kind: order.offerDistanceKind ?? "geographic"))
+                    .font(Theme.text(.caption)).foregroundStyle(Theme.muted)
+                Text(order.offerIncremental == true ? "This is the extra distance off a route they are already taking." : "This is a short local estimate until a runner's location revises it. It is not the whole intercity drive.")
+                    .font(Theme.text(.caption)).foregroundStyle(Theme.muted)
+                Text("The offer is held for 15 minutes. Approving locks this delivery fee.")
+                    .font(Theme.text(.caption)).foregroundStyle(Theme.muted)
+                PrimaryButton(title: "Approve delivery fee", busy: busy) { Task { await decideOffer(order, "approve") } }
+                Button("Decline offer") { Task { await decideOffer(order, "decline") } }
+            } else if role == "marketplace", order.status == .requested {
+                let preview = RequestRanking.payoutPreview(order, origin: model.runnerOrigin)
+                Text("Accept pickup")
+                    .font(Theme.text(.headline, weight: .semibold))
+                    .accessibilityIdentifier("accept-screen")
+                Text(order.itemSummary ?? "Pickup request")
+                Text("You earn \(Fees.money(Double(preview.shareCents) / 100))")
+                    .font(Theme.price(.title3))
+                    .foregroundStyle(Theme.maroon)
+                Text("Customer pays \(Fees.money(Double(preview.customerCents) / 100)). Home Run keeps \(Fees.money(Double(preview.customerCents - preview.shareCents) / 100)), which is 15%.")
+                    .font(Theme.text(.subheadline))
+                Text(preview.caption)
+                    .font(Theme.text(.caption)).foregroundStyle(Theme.muted)
+                Text("Accepting sends this price to the customer. It locks when they approve.")
+                    .font(Theme.text(.caption)).foregroundStyle(Theme.muted)
+                if order.customerId == model.user?.id {
+                    Text("You posted this. Another runner can accept it.")
+                        .font(Theme.text(.caption)).foregroundStyle(Theme.muted)
+                } else {
+                    PrimaryButton(title: "Accept", busy: busy) { Task { await claim(order) } }
+                        .accessibilityIdentifier("claim-request")
+                }
+            } else if role == "driver" && order.status == .requested {
                 Text("\(Format.firstName(order.customer?.displayName)) wants \(order.restaurantName).")
                 Text("About \(Format.minutes(order.detourMinutes)) extra for \(Fees.money(order.deliveryFee)).")
                     .foregroundStyle(Theme.muted)
@@ -169,7 +217,7 @@ struct OrderDetailView: View {
                     .font(Theme.text(.body, weight: .semibold))
                 Button("Approve new merchandise total") { Task { await revise(order, "accept") } }.fontWeight(.bold)
                 Button("Keep the approved total") { Task { await revise(order, "decline") } }
-            } else if role == "customer", order.needsHandoffForm {
+            } else if role == "customer", !forRunner, model.side != .driving, order.needsHandoffForm {
                 if order.status == .requested && !order.isPersonalPickup {
                     Text("Wait for your runner to accept before ordering.")
                         .font(Theme.text(.body, weight: .semibold))
@@ -197,8 +245,8 @@ struct OrderDetailView: View {
             } else if role == "driver", order.status == .arriving {
                 Text("Ask the customer for the confirmation code. It is not shown here.")
                     .font(Theme.text(.caption)).foregroundStyle(Theme.muted)
-                TextField("Confirmation code", text: $pinEntry)
-                    .keyboardType(.numberPad)
+                RequiredLabel(title: "Confirmation code", required: true)
+                EntryField("Confirmation code", text: $pinEntry, keyboard: .numberPad, identifier: "delivery-pin")
                     .padding(12)
                     .sketchPanel()
                     .accessibilityIdentifier("delivery-pin")
@@ -243,8 +291,9 @@ struct OrderDetailView: View {
         .sheet(isPresented: $helpOpen) {
             NavigationStack {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Tell support what happened. This stays in the demo.").font(Theme.section())
-                    TextField("What happened", text: $helpDetails, axis: .vertical).padding(12).sketchPanel()
+                    Text("Tell support what happened. This stays on this phone.").font(Theme.section())
+                    RequiredLabel(title: "What happened", required: true)
+                    EntryField("What happened", text: $helpDetails, axis: .vertical).padding(12).sketchPanel()
                     PrimaryButton(title: "Open a case") { Task { await openHelp(order) } }
                     Spacer()
                 }
@@ -295,7 +344,8 @@ struct OrderDetailView: View {
                     .padding(10)
                     .frame(maxWidth: .infinity, alignment: message.senderId == model.user?.id ? .trailing : .leading)
             }
-            TextField("Message", text: $messageText)
+            RequiredLabel(title: "Message", required: true)
+            EntryField("Message", text: $messageText, identifier: "order-message")
                 .padding(12)
                 .sketchPanel()
             Button("Send") { Task { await sendMessage() } }
@@ -392,6 +442,10 @@ struct OrderDetailView: View {
             Text("Amounts").font(Theme.text(.headline, weight: .semibold)).padding(.top, 6)
             if order.quoteState == "expired" {
                 Text("Quote expired. Submit a new request.").font(Theme.price()).foregroundStyle(Theme.maroon)
+            } else if role == "marketplace", order.deliveryFee == nil {
+                let preview = RequestRanking.payoutPreview(order, origin: model.runnerOrigin)
+                Text("You earn \(Fees.money(Double(preview.shareCents) / 100))").font(Theme.price()).foregroundStyle(Theme.maroon)
+                Text("Customer pays \(Fees.money(Double(preview.customerCents) / 100)). Home Run keeps the 15%.")
             } else if order.quoteState == "review" || order.deliveryFee == nil {
                 Text("Price needs review").font(Theme.price()).foregroundStyle(Theme.maroon)
             } else if let goods = order.merchandiseCents, let fee = order.quoteCents {
@@ -496,6 +550,41 @@ struct OrderDetailView: View {
         }
     }
 
+    private func decideOffer(_ order: Order, _ decision: String) async {
+        busy = true
+        defer { busy = false }
+        struct Body: Encodable { var offerDecision: String }
+        do {
+            let updated: Order = try await model.client().store("orders", method: "PATCH", query: ["id": order.id], body: Body(offerDecision: decision))
+            self.order = updated
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    private func claim(_ order: Order) async {
+        busy = true
+        defer { busy = false }
+        let preview = RequestRanking.payoutPreview(order, origin: model.runnerOrigin)
+        let meters = preview.meters
+        let mine: [Trip] = (try? await model.client().store("trips", query: ["mine": "1"])) ?? []
+        let tripId = mine.first { $0.status == "scheduled" && $0.destinationCity == Places.destination.name }?.id
+        struct Body: Encodable {
+            var offer: String
+            var extraMeters: Double
+            var extraSeconds: Double
+            var distanceKind: String
+            var incremental: Bool
+            var tripId: String?
+        }
+        do {
+            let updated: Order = try await model.client().store("orders", method: "PATCH", query: ["id": order.id], body: Body(offer: "submit", extraMeters: meters, extraSeconds: preview.seconds, distanceKind: "geographic", incremental: model.runnerOrigin != nil, tripId: tripId))
+            self.order = updated
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
     private func setStatus(_ order: Order, _ status: OrderStatus) async {
         busy = true
         defer { busy = false }
@@ -520,7 +609,8 @@ struct OrderDetailView: View {
 
     @ViewBuilder
     private func handoffForm(_ order: Order) -> some View {
-        TextField("Pickup details", text: $detailsText, axis: .vertical)
+        RequiredLabel(title: "Pickup details", required: true)
+        EntryField("Pickup details", text: $detailsText, axis: .vertical)
             .lineLimit(3 ... 8)
             .padding(12)
             .sketchPanel()
@@ -529,12 +619,15 @@ struct OrderDetailView: View {
             Text(order.contactLabel ?? "Add a contact label on the request.")
                 .font(Theme.text(.caption)).foregroundStyle(Theme.muted)
         } else {
-            TextField("Name on the order", text: $pickupName).padding(12).sketchPanel()
+            RequiredLabel(title: "Name on the order", required: true)
+            EntryField("Name on the order", text: $pickupName).padding(12).sketchPanel()
             Toggle("Merchant did not provide one", isOn: $referenceMissing)
             if !referenceMissing {
-                TextField("Order number", text: $orderNumber).padding(12).sketchPanel()
+                RequiredLabel(title: "Order number", required: true)
+                EntryField("Order number", text: $orderNumber).padding(12).sketchPanel()
             }
-            TextField("Pickup code, if you have one", text: $pickupCode).padding(12).sketchPanel()
+            RequiredLabel(title: "Pickup code", required: false)
+            EntryField("Pickup code, if you have one", text: $pickupCode).padding(12).sketchPanel()
             if let website = restaurantURL(order.restaurantWebsite) {
                 Link("Merchant website", destination: website).fontWeight(.bold)
             }
@@ -543,12 +636,12 @@ struct OrderDetailView: View {
             Text("30 minutes before departure").tag("30 minutes before departure")
             Text("When the runner is nearby").tag("When the runner is nearby")
         }
-        TextField("Collection instructions", text: $instructions, axis: .vertical)
+        EntryField("Collection instructions", text: $instructions, axis: .vertical)
             .lineLimit(2 ... 5)
             .padding(12)
             .sketchPanel()
         if order.status != .requested {
-            TextField("Different branch, if this one changed", text: $branchNote).padding(12).sketchPanel()
+            EntryField("Different branch, if this one changed", text: $branchNote).padding(12).sketchPanel()
         }
         PhotosPicker(selection: $handoffPhoto, matching: .images) {
             Text(order.isPersonalPickup ? "Add an item photo" : "Add a confirmation screenshot")

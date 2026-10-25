@@ -101,8 +101,9 @@ enum DemoRules {
         counterofferRange.contains(cents)
     }
 
+    /// `cents` is the customer total. The runner keeps the amount before the 15% markup.
     static func runnerShare(of cents: Int) -> Int {
-        PricingPolicy.halfUp(Decimal(cents) * Decimal(PricingPolicy.runnerBasisPoints) / 10_000)
+        max(0, cents) * 10_000 / (10_000 + PricingPolicy.markupBasisPoints)
     }
 
     /// Delivery-fee effect only. Runner-purchase history keeps the older support stop once a purchase was recorded.

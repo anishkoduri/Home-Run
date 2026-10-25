@@ -78,12 +78,12 @@ struct TripEditor: View {
                     Stepper("Item limit: \(Int(itemPounds)) lb", value: $itemPounds, in: 1...80, step: 1).disabled(locked)
                     Stepper("Total limit: \(Int(totalPounds)) lb", value: $totalPounds, in: 1...120, step: 1).disabled(locked)
                     Toggle("Custom items allowed", isOn: $allowsCustom).disabled(locked)
-                    TextField("Notes", text: $notes, axis: .vertical).padding(12).sketchPanel()
+                    EntryField("Notes", text: $notes, axis: .vertical).padding(12).sketchPanel()
                     Text("Planned stops").font(Theme.section())
                     ForEach(Array(stops.enumerated()), id: \.element.id) { index, stop in
                         VStack(alignment: .leading, spacing: 4) {
                             Text(stop.restaurantName).font(Theme.text(.body, weight: .semibold))
-                            TextField("Timing", text: binding(for: index, \.arrivesAt))
+                            EntryField("Timing", text: binding(for: index, \.arrivesAt))
                                 .font(Theme.text(.caption))
                             HStack {
                                 Button("Up") { move(index, -1) }.disabled(index == 0)
@@ -95,7 +95,7 @@ struct TripEditor: View {
                         .padding(8)
                         .sketchPanel()
                     }
-                    TextField("Add a stop name", text: $newStop).padding(12).sketchPanel()
+                    EntryField("Add a stop name", text: $newStop).padding(12).sketchPanel()
                     Button("Add stop") { addStop() }
                         .font(Theme.text(.body, weight: .semibold))
                         .disabled(newStop.trimmingCharacters(in: .whitespaces).isEmpty || stops.count >= 8)

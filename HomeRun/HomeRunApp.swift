@@ -5,7 +5,6 @@ struct HomeRunApp: App {
     @State private var model = AppModel()
 
     init() {
-        GoogleMapsStartup.start()
         let display = UIFont(name: "Fraunces", size: 18) ?? .systemFont(ofSize: 18, weight: .semibold)
         let body = UIFont(name: "Source Sans 3", size: 17) ?? .systemFont(ofSize: 17)
         let caption = UIFont(name: "Source Sans 3", size: 13) ?? .systemFont(ofSize: 13, weight: .semibold)
@@ -41,59 +40,118 @@ struct HomeRunApp: App {
 struct RootView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Stays @State so tab changes, role switches, and foregrounding do not replay the open.
     @State private var showLaunch = true
     @State private var crossed = false
     @State private var handoff: CGFloat = 0
     @State private var revealed = false
+    @State private var loadingReady = false
+    @State private var loadCapHit = false
+    @State private var mountHome = false
+    @State private var pageWidth: CGFloat = 0
+    @State private var runnerSettledAt: Date?
+
+    private var cover: Bool { showLaunch && !reduceMotion }
 
     var body: some View {
         ZStack {
-            destination
-                .offset(y: reduceMotion ? 0 : 12 * (1 - handoff))
-            if showLaunch, !reduceMotion {
-                LaunchSlide { crossed = true }
+            Theme.cream
+            if !cover || mountHome {
+                destination
+                    .opacity(cover ? 0 : 1)
+                    .accessibilityHidden(cover)
+            }
+            if cover {
+                LaunchSlide { noteRunnerSettled() }
+                    .compositingGroup()
+                    .scaleEffect(1 + (0.55 * handoff), anchor: .center)
                     .opacity(1 - handoff)
                     .allowsHitTesting(handoff == 0)
+                    .zIndex(1)
             }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background {
+            GeometryReader { geo in
+                Color.clear.preference(key: LaunchWidthKey.self, value: geo.size.width)
+            }
+        }
+        .onPreferenceChange(LaunchWidthKey.self) { width in
+            if width > 0, width != pageWidth { pageWidth = width }
         }
         .onAppear {
-            if reduceMotion {
-                handoff = 1
-                showLaunch = false
-                revealed = true
-            }
+            if reduceMotion { finishImmediately() }
         }
         .onChange(of: reduceMotion) { _, reduce in
-            if reduce {
-                handoff = 1
-                showLaunch = false
-                revealed = true
+            if reduce { finishImmediately() }
+        }
+        .task {
+            // Next run-loop turn: the launch slide can commit before session restore.
+            // Map startup stays off this path. It is synchronous on the main thread.
+            await Task.yield()
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                DispatchQueue.main.async { continuation.resume() }
             }
+            guard !loadingReady else { return }
+            await model.restore()
+            loadingReady = true
+            revealIfReady()
         }
-        .onChange(of: crossed) { _, done in
-            guard done else { return }
-            reveal()
-        }
-        .task { await model.restore() }
         .task {
             guard !reduceMotion else { return }
-            try? await Task.sleep(for: .milliseconds(900))
-            reveal()
+            try? await Task.sleep(for: .milliseconds(2500))
+            guard !Task.isCancelled, showLaunch, !revealed else { return }
+            loadCapHit = true
+            revealIfReady()
         }
     }
 
-    private func reveal() {
+    private func noteRunnerSettled() {
+        guard !crossed else { return }
+        crossed = true
+        runnerSettledAt = Date()
+        GoogleMapsStartup.start()
+        revealIfReady()
+    }
+
+    private func revealIfReady() {
         guard !revealed else { return }
-        revealed = true
         if reduceMotion {
-            handoff = 1
-            showLaunch = false
+            finishImmediately()
             return
         }
-        withAnimation(.easeOut(duration: 0.22)) {
-            handoff = 1
-        } completion: {
-            showLaunch = false
+        guard crossed || loadCapHit else { return }
+        guard loadingReady || loadCapHit else { return }
+        revealed = true
+        if !crossed {
+            GoogleMapsStartup.start()
+        }
+        mountHome = true
+        Task { @MainActor in
+            let elapsed = Date().timeIntervalSince(runnerSettledAt ?? Date())
+            let linger = max(0, 0.1 - elapsed)
+            if linger > 0 { try? await Task.sleep(for: .seconds(linger)) }
+            guard showLaunch else { return }
+            withAnimation(.easeIn(duration: 0.2)) {
+                handoff = 1
+            } completion: {
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) { showLaunch = false }
+            }
+        }
+    }
+
+    private func finishImmediately() {
+        guard !revealed else { return }
+        revealed = true
+        crossed = true
+        handoff = 1
+        mountHome = true
+        showLaunch = false
+        Task { @MainActor in
+            await Task.yield()
+            GoogleMapsStartup.start()
         }
     }
 
@@ -120,6 +178,13 @@ struct RootView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+private struct LaunchWidthKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
 
@@ -166,6 +231,7 @@ private struct OrderShell: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipped()
             HStack(alignment: .center, spacing: 4) {
                 tabButton("Home", "house", .home)
                 tabButton("Discover", "magnifyingglass", .discover)
@@ -206,6 +272,7 @@ private struct OrderShell: View {
                     .ignoresSafeArea(edges: .bottom)
             }
             .overlay(alignment: .top) { Hairline() }
+            .zIndex(1)
         }
         .homeRunPage(road: false)
         .tint(Theme.maroon)
@@ -269,6 +336,8 @@ private struct DriveShell: View {
     var body: some View {
         VStack(spacing: 0) {
             DriveView(section: $section)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .clipped()
             HStack(spacing: 8) {
                 ForEach(DriveView.Section.allCases) { item in
                     Button {
@@ -330,6 +399,7 @@ private struct DriveShell: View {
                     .ignoresSafeArea(edges: .bottom)
             }
             .overlay(alignment: .top) { Hairline() }
+            .zIndex(1)
         }
         .homeRunPage(road: false)
         .tint(Theme.maroon)

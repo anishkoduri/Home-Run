@@ -18,6 +18,9 @@ struct DriveView: View {
     @State private var ledger: [LedgerEntry] = []
     @State private var earningPeriod = "all"
     @State private var latestFirst = true
+    @State private var available: [Order] = []
+    @State private var sort = "latest"
+    @State private var areaFilter = ""
     @State private var editingTrip: Trip?
     @State private var parkedEdit: Trip?
     @State private var path = NavigationPath()
@@ -71,19 +74,14 @@ struct DriveView: View {
                     if let error { ErrorBanner(message: error) }
                     switch section {
                     case .requests:
-                        let incoming = orders.filter { $0.status == .requested }
-                        Text(latestFirst ? "Latest" : "Soonest departure").font(Theme.text(.caption, weight: .semibold)).foregroundStyle(Theme.muted)
-                        Button(latestFirst ? "Sort by departure" : "Sort latest") { latestFirst.toggle() }
-                            .font(Theme.text(.caption, weight: .semibold))
-                        if incoming.isEmpty {
-                            EmptyState(title: "You're all caught up", message: "New requests show up here.")
-                        }
-                        ForEach(sortedRequests(incoming)) { order in requestRow(order) }
+                        availableFeed
                     case .deliveries:
+                        let waiting = orders.filter { $0.status == .requested }
                         let active = orders.filter { $0.status.isActiveDelivery }
-                        if active.isEmpty {
-                            EmptyState(title: "No deliveries right now", message: "Accepted requests move here.")
+                        if waiting.isEmpty && active.isEmpty {
+                            EmptyState(title: "No deliveries right now", message: "Accepted requests, and requests already assigned to you, show up here.")
                         }
+                        ForEach(waiting) { order in requestRow(order) }
                         ForEach(active) { order in deliveryRow(order) }
                     case .trips:
                         if trips.isEmpty {
@@ -119,7 +117,7 @@ struct DriveView: View {
                                         .font(Theme.text(.caption))
                                 }
                             }
-                            Text("Demo balance — no real money.")
+                            Text("No real money moves.")
                                 .font(Theme.text(.caption)).foregroundStyle(Theme.muted)
                             Button("Simulate payout") { Task { await payout() } }
                                 .font(Theme.text(.caption, weight: .semibold))
@@ -138,13 +136,13 @@ struct DriveView: View {
             .toolbarBackground(Theme.cream, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.light, for: .navigationBar)
-            .navigationDestination(for: String.self) { OrderDetailView(id: $0) }
+            .navigationDestination(for: String.self) { OrderDetailView(id: $0, forRunner: true) }
             .refreshable { await load() }
             .sheet(item: $declining) { order in
                 NavigationStack {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Why are you declining?").font(Theme.section())
-                        TextField("Short reason", text: $declineReason).padding(12).sketchPanel()
+                        EntryField("Short reason", text: $declineReason).padding(12).sketchPanel()
                         PrimaryButton(title: "Decline request") { Task { await decline(order) } }
                         Spacer()
                     }
@@ -158,8 +156,8 @@ struct DriveView: View {
                 NavigationStack {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Offer a delivery fee from $1 to $250.").font(Theme.section())
-                        TextField("Dollars", text: $counterDollars).keyboardType(.decimalPad).padding(12).sketchPanel()
-                        TextField("Reason", text: $counterReason).padding(12).sketchPanel()
+                        EntryField("Dollars", text: $counterDollars, keyboard: .decimalPad).padding(12).sketchPanel()
+                        EntryField("Reason", text: $counterReason).padding(12).sketchPanel()
                         PrimaryButton(title: "Send offer") { Task { await counter(order) } }
                         Spacer()
                     }
@@ -449,11 +447,159 @@ struct DriveView: View {
         }
     }
 
+    private func areaChip(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(Theme.text(.caption, weight: .semibold))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(selected ? Theme.maroon : Theme.surface)
+                .foregroundStyle(selected ? Color.white : Theme.ink)
+                .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var rankedAvailable: [Order] {
+        switch sort {
+        case "closest":
+            return RequestRanking.closest(available, origin: model.runnerOrigin)
+        case "recommended":
+            return RequestRanking.recommended(available, origin: model.runnerOrigin, area: model.runnerArea, now: DemoClock.now)
+        default:
+            return RequestRanking.latest(available)
+        }
+    }
+
+    private var availableFeed: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Available requests").font(Theme.section())
+            Picker("Sort", selection: $sort) {
+                Text("Latest").tag("latest")
+                Text("Closest").tag("closest")
+                Text("Recommended").tag("recommended")
+            }
+            .pickerStyle(.segmented)
+            .accessibilityIdentifier("request-sort")
+            if model.runnerOrigin == nil {
+                Text("Choose a starting area to sort by distance. This does not use a pretend GPS point.")
+                    .font(Theme.text(.caption)).foregroundStyle(Theme.muted)
+            } else if model.runnerAreaSource == "manual" {
+                Text("Manual area: \(model.runnerArea). Distances are approximate geographic distance, not a driving route.")
+                    .font(Theme.text(.caption)).foregroundStyle(Theme.muted)
+            } else {
+                Text("Device location. Closest uses approximate geographic distance unless a road route is calculated when you claim.")
+                    .font(Theme.text(.caption)).foregroundStyle(Theme.muted)
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack {
+                    areaChip("All", selected: areaFilter.isEmpty) {
+                        areaFilter = ""
+                        Task { await load() }
+                    }
+                    .accessibilityIdentifier("area-All")
+                    ForEach(["Houston", "Dallas", "Austin"], id: \.self) { name in
+                        areaChip(name, selected: areaFilter == name) {
+                            areaFilter = name
+                            model.setManualArea(name)
+                            Task { await load() }
+                        }
+                        .accessibilityIdentifier("area-\(name)")
+                    }
+                }
+            }
+            Button("Use current location") {
+                RunnerLocator.shared.onFix = { location in
+                    model.setDeviceArea(lat: location.coordinate.latitude, lng: location.coordinate.longitude, label: "Current location")
+                }
+                RunnerLocator.shared.request()
+            }
+                .font(Theme.text(.caption, weight: .semibold))
+            if rankedAvailable.isEmpty {
+                EmptyState(title: "No open requests", message: "Posted pickups that still need a runner show up here. You don't need a trip to look.")
+            }
+            ForEach(rankedAvailable) { order in
+                let preview = RequestRanking.payoutPreview(order, origin: model.runnerOrigin)
+                HStack(alignment: .center, spacing: 12) {
+                    NavigationLink(value: order.id) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(order.personalItem == true ? "Personal item" : order.restaurantName)
+                                .font(Theme.text(.headline, weight: .semibold))
+                                .foregroundStyle(Theme.ink)
+                                .lineLimit(1)
+                            Text("\(order.pickupCity ?? "Pickup") → \(order.destinationLabel)")
+                                .font(Theme.text(.caption))
+                                .foregroundStyle(Theme.muted)
+                                .lineLimit(1)
+                            Text(order.itemSummary ?? "")
+                                .font(Theme.text(.caption))
+                                .foregroundStyle(Theme.muted)
+                                .lineLimit(1)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("available-request")
+                    VStack(alignment: .trailing, spacing: 4) {
+                        Text(Fees.money(Double(preview.shareCents) / 100))
+                            .font(Theme.price(.headline))
+                            .foregroundStyle(Theme.maroon)
+                        Text("Est.")
+                            .font(Theme.text(.caption2, weight: .semibold))
+                            .foregroundStyle(Theme.muted)
+                        if order.customerId == model.user?.id {
+                            Text("You posted this.")
+                                .font(Theme.text(.caption2))
+                                .foregroundStyle(Theme.muted)
+                                .multilineTextAlignment(.trailing)
+                        } else {
+                            Button("Claim") { Task { await claim(order) } }
+                                .font(Theme.text(.caption, weight: .bold))
+                                .accessibilityIdentifier("claim-\(order.id)")
+                        }
+                    }
+                }
+                .padding(.vertical, 10)
+                Divider()
+            }
+        }
+    }
+
+    private func claim(_ order: Order) async {
+        let preview = RequestRanking.payoutPreview(order, origin: model.runnerOrigin)
+        let trip = trips.first { $0.status == "scheduled" && $0.destinationCity == Places.destination.name }
+        let meters = preview.meters
+        let incremental = model.runnerOrigin != nil
+        struct Body: Encodable {
+            var offer: String
+            var extraMeters: Double
+            var extraSeconds: Double
+            var distanceKind: String
+            var incremental: Bool
+            var tripId: String?
+        }
+        do {
+            let _: Order = try await model.client().store("orders", method: "PATCH", query: ["id": order.id], body: Body(offer: "submit", extraMeters: meters, extraSeconds: preview.seconds, distanceKind: "geographic", incremental: incremental, tripId: trip?.id))
+            await load()
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
     private func load() async {
         do {
             let client = try model.client()
             trips = try await client.store("trips", query: ["mine": "1"])
             orders = try await client.store("orders", query: ["role": "driver"])
+            let city = Places.city(named: areaFilter)?.name ?? ""
+            let open: [Order] = try await client.store("orders", query: city.isEmpty ? ["role": "available"] : ["role": "available", "city": city])
+            let mine: [Order] = try await client.store("orders")
+            let posted = mine.filter { order in
+                order.status == .requested && order.driverId.isEmpty && RequestRanking.matchesPickupCity(order, filter: areaFilter)
+            }
+            var seen = Set(open.map(\.id))
+            available = (open + posted.filter { seen.insert($0.id).inserted })
+                .filter { RequestRanking.matchesPickupCity($0, filter: areaFilter) }
             let ledger: LedgerList = (try? await client.store("ledger")) ?? LedgerList(entries: [])
             self.ledger = ledger.entries
             paidCents = ledger.entries.filter { $0.kind == "payout" }.reduce(0) { $0 + $1.cents }

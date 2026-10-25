@@ -30,12 +30,14 @@ struct ProfileView: View {
 
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Your details").font(Theme.section())
-                        TextField("Display name", text: $name)
+                        RequiredLabel(title: "Display name", required: true)
+                        EntryField("Display name", text: $name)
                             .padding(12)
                             .frame(minHeight: 44)
                             .sketchPanel()
                             .accessibilityLabel("Display name")
-                        TextField("Payment handle", text: $handle)
+                        RequiredLabel(title: "Payment handle", required: false)
+                        EntryField("Payment handle", text: $handle)
                             .padding(12)
                             .frame(minHeight: 44)
                             .sketchPanel()
@@ -53,7 +55,7 @@ struct ProfileView: View {
                         Text("By Aggies, for Aggies.")
                             .font(Theme.text(.subheadline, weight: .semibold))
                             .foregroundStyle(Theme.maroon)
-                        Text("Demo • sample data • no real charges")
+                        Text("Sample session. No real money moves.")
                             .font(Theme.text(.caption)).foregroundStyle(Theme.muted)
                     }
                     .padding(16)

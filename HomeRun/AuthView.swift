@@ -52,7 +52,7 @@ struct AuthView: View {
                 Text("Supply drops for Aggies from Aggies.")
                     .font(Theme.text(.subheadline))
                     .foregroundStyle(Theme.muted)
-                Text("Demo • sample data • no real charges")
+                Text("No real charges.")
                     .font(Theme.text(.caption))
                     .foregroundStyle(Theme.muted)
 
@@ -78,13 +78,13 @@ struct AuthView: View {
                         .buttonStyle(.plain)
                     }
                 }
-                field("Email", text: $email)
+                field("Email", text: $email, keyboard: .emailAddress)
                     .textInputAutocapitalization(.never)
-                    .keyboardType(.emailAddress)
+                RequiredLabel(title: "Password", required: true)
                 HStack(spacing: 8) {
                     Group {
                         if revealPassword {
-                            TextField("Password", text: $password)
+                            EntryField("Password", text: $password)
                         } else {
                             SecureField("Password", text: $password)
                         }
@@ -155,10 +155,10 @@ struct AuthView: View {
         }
     }
 
-    private func field(_ title: String, text: Binding<String>) -> some View {
+    private func field(_ title: String, text: Binding<String>, keyboard: UIKeyboardType = .default) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title).font(Theme.text(.footnote, weight: .semibold)).foregroundStyle(Theme.muted)
-            TextField(title, text: text)
+            RequiredLabel(title: title, required: true)
+            EntryField(title, text: text, keyboard: keyboard)
                 .padding(12)
                 .frame(minHeight: 44)
                 .sketchPanel()

@@ -50,28 +50,41 @@ struct JourneyTests {
         #expect(!stillVisible.contains { $0.id == draft.id })
 
         await #expect(throws: APIError.self) {
-            try await postOrder(db, token: jordan.token, trip: trip, key: "own-trip", item: "Rice bowl", quantity: 1)
+            let _: Order = try await send(db, "orders", method: "POST", token: jordan.token, body: [
+                "trip_id": trip.id,
+                "restaurant_name": "Bayou Bowl Kitchen",
+                "restaurant_lat": trip.originLat,
+                "restaurant_lng": trip.originLng,
+                "destination_type": "campus",
+                "destination_label": "Campus Library Plaza",
+                "destination_lat": 30.618,
+                "destination_lng": -96.338,
+                "operation_key": "own-trip",
+                "lines": [["id": "own-trip", "name": "Rice bowl", "quantity": 1, "weight_pounds": 2, "weight_confirmed": true, "bulky": false, "fragile": false]],
+            ])
         }
 
         let order = try await postOrder(db, token: maya.token, trip: trip, key: "maya-rice", item: "Rice bowl", quantity: 2)
         #expect(order.lines?.first?.name == "Rice bowl")
         #expect(order.lines?.first?.quantity == 2)
         #expect(order.itemSummary == "2× Rice bowl")
-        #expect(order.driverId == jordan.user.id)
+        #expect(order.driverId.isEmpty)
 
+        let open: [Order] = try await send(db, "orders", token: jordan.token, query: ["role": "available"])
+        #expect(open.contains { $0.id == order.id && $0.lines?.first?.name == "Rice bowl" })
+        let averyOpen: [Order] = try await send(db, "orders", token: avery.token, query: ["role": "available"])
+        #expect(averyOpen.contains { $0.id == order.id })
         let jordanInbox: [Order] = try await send(db, "orders", token: jordan.token, query: ["role": "driver"])
-        let latest = jordanInbox.filter { $0.status == .requested }
-        #expect(latest.first?.id == order.id)
-        #expect(latest.first?.lines?.first?.name == "Rice bowl")
-
-        let averyInbox: [Order] = try await send(db, "orders", token: avery.token, query: ["role": "driver"])
-        #expect(!averyInbox.contains { $0.id == order.id })
+        #expect(!jordanInbox.contains { $0.id == order.id })
 
         let competing = try await postOrder(db, token: alex.token, trip: trip, key: "alex-snack", item: "Snack bundle", quantity: 1)
-        let accepted: Order = try await send(db, "orders", method: "PATCH", token: jordan.token, query: ["id": order.id], body: ["status": "accepted"])
+        let _: Order = try await send(db, "orders", method: "PATCH", token: jordan.token, query: ["id": order.id], body: ["offer": "submit", "extra_meters": 0, "extra_seconds": 0, "distance_kind": "geographic", "trip_id": trip.id])
+        let accepted: Order = try await send(db, "orders", method: "PATCH", token: maya.token, query: ["id": order.id], body: ["offer_decision": "approve"])
         #expect(accepted.status == .accepted)
+        #expect(accepted.driverId == jordan.user.id)
+        let _: Order = try await send(db, "orders", method: "PATCH", token: jordan.token, query: ["id": competing.id], body: ["offer": "submit", "extra_meters": 0, "extra_seconds": 0, "distance_kind": "geographic", "trip_id": trip.id])
         await #expect(throws: APIError.self) {
-            let _: Order = try await send(db, "orders", method: "PATCH", token: jordan.token, query: ["id": competing.id], body: ["status": "accepted"])
+            let _: Order = try await send(db, "orders", method: "PATCH", token: alex.token, query: ["id": competing.id], body: ["offer_decision": "approve"])
         }
 
         let customer: OrderEnvelope = try await send(db, "orders", token: maya.token, query: ["id": order.id])
@@ -97,7 +110,7 @@ struct JourneyTests {
         }
         let delivered: Order = try await send(db, "orders", method: "PATCH", token: jordan.token, query: ["id": order.id], body: ["status": "delivered", "pin": pin])
         #expect(delivered.status == .delivered)
-        #expect(delivered.runnerShareCents == 640)
+        #expect(delivered.runnerShareCents == 120)
 
         let ledger: LedgerList = try await send(db, "ledger", token: jordan.token, query: ["order": order.id])
         #expect(ledger.entries.filter { $0.kind == "earning" }.count == 1)
@@ -156,7 +169,6 @@ struct JourneyTests {
 
     private func postOrder(_ db: AppDatabase, token: String, trip: Trip, key: String, item: String, quantity: Int) async throws -> Order {
         try await send(db, "orders", method: "POST", token: token, body: [
-            "trip_id": trip.id,
             "restaurant_name": "Bayou Bowl Kitchen",
             "restaurant_lat": trip.originLat,
             "restaurant_lng": trip.originLng,

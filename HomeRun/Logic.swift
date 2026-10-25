@@ -1,7 +1,7 @@
 import Foundation
 
 enum Fees {
-    static let formula = "Demo delivery fee. No real charge."
+    static let formula = "Delivery price is the runner's extra time and distance, plus 15%. Home Run keeps the 15%. No card is charged."
 
     static func estimate(_ minutes: Double) -> Double {
         let raw = 8 + 0.5 * max(0, minutes)
@@ -98,8 +98,8 @@ enum Places {
     }
     static let destination = City(name: "College Station", lat: 30.615, lng: -96.341)
     static let meetups: [MeetupPoint] = [
-        MeetupPoint(id: "library-plaza", label: "Campus Library Plaza — demo location", detail: "Fictional demo meetup", lat: 30.6180, lng: -96.3380),
-        MeetupPoint(id: "student-center-east", label: "Student Center East Entrance", detail: "Fictional demo meetup", lat: 30.6128, lng: -96.3410),
+        MeetupPoint(id: "library-plaza", label: "Campus Library Plaza", detail: "Sample meetup point", lat: 30.6180, lng: -96.3380),
+        MeetupPoint(id: "student-center-east", label: "Student Center East Entrance", detail: "Sample meetup point", lat: 30.6128, lng: -96.3410),
         MeetupPoint(id: "msc", label: "Memorial Student Center", detail: "Joe Routt Blvd entrance", lat: 30.6122, lng: -96.3416),
         MeetupPoint(id: "zachry", label: "Zachry Engineering Complex", detail: "Main entrance on Bizzell St", lat: 30.6211, lng: -96.3403),
         MeetupPoint(id: "evans", label: "Evans Library", detail: "Front steps", lat: 30.6171, lng: -96.3389),

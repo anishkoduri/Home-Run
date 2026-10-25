@@ -27,7 +27,6 @@ struct NewTripBody: Encodable {
 }
 
 struct NewOrderBody: Encodable {
-    var tripId: String
     var restaurantPlaceId: String?
     var restaurantName: String
     var restaurantAddress: String?

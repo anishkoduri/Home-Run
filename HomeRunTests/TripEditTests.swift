@@ -21,19 +21,22 @@ struct TripEditTests {
         let extra: [String: Any] = ["id": "stop-c", "restaurant_name": "Third Kitchen", "lat": houston.originLat + 0.02, "lng": houston.originLng, "place_id": "sample:third"]
         let _: Ack = try await send(db, "trips", method: "PATCH", token: jordan.token, query: ["id": houston.id], body: ["stops": [second, first, extra]])
         let customerOrders: [Order] = try await send(db, "orders", token: maya.token)
-        #expect(customerOrders.first { $0.id == open.id }?.quoteState == "expired")
+        #expect(customerOrders.first { $0.id == open.id }?.quoteState == "preliminary")
+        #expect(customerOrders.first { $0.id == open.id }?.driverId.isEmpty == true)
         let ledger: LedgerList = try await send(db, "ledger", token: maya.token, query: ["order": open.id])
-        #expect(ledger.entries.contains { $0.kind == "release" && $0.orderId == open.id })
+        #expect(!ledger.entries.contains { $0.kind == "release" && $0.orderId == open.id })
 
         let held = try await post(db, token: maya.token, trip: houston, key: "held-quote", placeId: "sample:first", name: "First Kitchen")
-        let accepted: Order = try await send(db, "orders", method: "PATCH", token: jordan.token, query: ["id": held.id], body: ["status": "accepted"])
+        let _: Order = try await send(db, "orders", method: "PATCH", token: jordan.token, query: ["id": held.id], body: ["offer": "submit", "extra_meters": 0, "extra_seconds": 0, "distance_kind": "geographic", "trip_id": houston.id])
+        let accepted: Order = try await send(db, "orders", method: "PATCH", token: maya.token, query: ["id": held.id], body: ["offer_decision": "approve"])
         #expect(accepted.status == .accepted)
+        #expect(accepted.driverId == jordan.user.id)
         await #expect(throws: APIError.self) {
             let _: Ack = try await send(db, "trips", method: "PATCH", token: jordan.token, query: ["id": houston.id], body: ["stops": [second, extra]])
         }
         let still: [Order] = try await send(db, "orders", token: maya.token)
         #expect(still.first { $0.id == held.id }?.status == .accepted)
-        #expect(still.first { $0.id == held.id }?.deliveryFee == 8)
+        #expect(still.first { $0.id == held.id }?.quoteCents == 138)
         let _: Ack = try await send(db, "trips", method: "PATCH", token: jordan.token, query: ["id": houston.id], body: ["stops": [second, first, extra]])
         let kept: [Trip] = try await send(db, "trips", token: jordan.token, query: ["mine": "1"])
         #expect(kept.first { $0.id == houston.id }?.stops?.contains { $0.placeId == "sample:first" } == true)
@@ -154,7 +157,6 @@ struct TripEditTests {
 
     private func post(_ db: AppDatabase, token: String, trip: Trip, key: String, placeId: String, name: String) async throws -> Order {
         try await send(db, "orders", method: "POST", token: token, body: [
-            "trip_id": trip.id,
             "restaurant_place_id": placeId,
             "restaurant_name": name,
             "restaurant_lat": trip.originLat,

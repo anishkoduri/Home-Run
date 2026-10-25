@@ -11,46 +11,48 @@ struct PricingPolicyTests {
         return quote
     }
 
-    @Test("No extra distance stays at $8")
+    @Test("No extra distance is the stop plus 15%")
     func ordinary() {
         let quote = quoted(.init(extraMeters: 0, extraSeconds: 0, weightPounds: 2, weightConfirmed: true, bulky: false, agreedWaitingMinutes: 0))
-        #expect(quote.totalCents == 800)
-        #expect(quote.runnerShareCents == 640)
+        #expect(quote.runnerShareCents == 120)
+        #expect(quote.totalCents == 138)
+        #expect(quote.totalCents - quote.runnerShareCents == 18)
     }
 
-    @Test("One mile and five minutes stays at $8")
+    @Test("One mile and five minutes adds distance")
     func boundary() {
         let quote = quoted(.init(extraMeters: 1609.344, extraSeconds: 300, weightPounds: 2, weightConfirmed: true, bulky: false, agreedWaitingMinutes: 0))
-        #expect(quote.totalCents == 800)
-        #expect(quote.routeCents == 0)
+        #expect(quote.routeCents == 115)
+        #expect(quote.runnerShareCents == 189)
+        #expect(quote.totalCents == 217)
     }
 
     @Test("Six miles and twelve minutes")
     func detour() {
         let quote = quoted(.init(extraMeters: 1609.344 * 6, extraSeconds: 12 * 60, weightPounds: 2, weightConfirmed: true, bulky: false, agreedWaitingMinutes: 0))
-        #expect(quote.totalCents == 1_550)
-        #expect(quote.runnerShareCents == 1_240)
+        #expect(quote.runnerShareCents == 372)
+        #expect(quote.totalCents == 428)
     }
 
     @Test("Thirty-five pounds on a standard route")
     func heavy() {
         let quote = quoted(.init(extraMeters: 0, extraSeconds: 0, weightPounds: 35, weightConfirmed: true, bulky: false, agreedWaitingMinutes: 0))
-        #expect(quote.totalCents == 1_500)
-        #expect(quote.runnerShareCents == 1_200)
+        #expect(quote.runnerShareCents == 360)
+        #expect(quote.totalCents == 414)
     }
 
     @Test("Bulky chair on a standard route")
     func bulkyChair() {
         let quote = quoted(.init(extraMeters: 0, extraSeconds: 0, weightPounds: 20, weightConfirmed: true, bulky: true, agreedWaitingMinutes: 0))
-        #expect(quote.totalCents == 2_100)
-        #expect(quote.runnerShareCents == 1_680)
+        #expect(quote.runnerShareCents == 480)
+        #expect(quote.totalCents == 552)
     }
 
     @Test("Ten minutes of agreed waiting")
     func waiting() {
         let quote = quoted(.init(extraMeters: 0, extraSeconds: 0, weightPounds: 2, weightConfirmed: true, bulky: false, agreedWaitingMinutes: 10))
-        #expect(quote.totalCents == 925)
-        #expect(quote.runnerShareCents == 740)
+        #expect(quote.runnerShareCents == 150)
+        #expect(quote.totalCents == 173)
     }
 
     @Test("Unconfirmed or heavy weight is not priced as zero")

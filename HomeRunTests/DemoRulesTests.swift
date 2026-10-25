@@ -32,8 +32,11 @@ struct DemoRulesTests {
         #expect(DemoRules.quoteDeadline(submitted: submitted, cutoff: later) == submitted.addingTimeInterval(15 * 60))
     }
 
-    @Test func runnerShareIsEightyPercent() {
-        #expect(DemoRules.runnerShare(of: 1550) == 1240)
+    @Test func runnerKeepsTheDistanceAndHomeRunKeepsFifteenPercent() {
+        #expect(PricingPolicy.scaled(200) == 120)
+        #expect(PricingPolicy.markedUp(120) == 138)
+        #expect(DemoRules.runnerShare(of: 138) == 120)
+        #expect(PricingPolicy.markupBasisPoints == 1_500)
     }
 
     @Test func sharedStopDiscountStaysOff() {

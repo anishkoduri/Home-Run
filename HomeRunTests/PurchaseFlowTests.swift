@@ -14,12 +14,15 @@ struct PurchaseFlowTests {
         let created = try await postPickup(db, token: maya.token, trip: trip, key: "customer-paid", kind: "merchant", ready: ready)
         #expect(created.orderingModel == "customer_paid")
         #expect(created.merchandiseCents == nil)
-        #expect(created.quoteCents == 800)
-        #expect(created.runnerShareCents == 640)
+        #expect(created.driverId.isEmpty)
+        #expect(created.quoteState == "preliminary")
         #expect(created.itemSummary == "Two takeout bags: one rice bowl and one sandwich.")
 
-        let accepted: Order = try await send(db, "orders", method: "PATCH", token: jordan.token, query: ["id": created.id], body: ["status": "accepted"])
+        let _: Order = try await send(db, "orders", method: "PATCH", token: jordan.token, query: ["id": created.id], body: ["offer": "submit", "extra_meters": 0, "extra_seconds": 0, "distance_kind": "geographic"])
+        let accepted: Order = try await send(db, "orders", method: "PATCH", token: maya.token, query: ["id": created.id], body: ["offer_decision": "approve"])
         #expect(accepted.status == .accepted)
+        #expect(accepted.quoteCents == 138)
+        #expect(accepted.runnerShareCents == 120)
         #expect(accepted.handoffSubmittedAt == nil)
 
         let confirmed: Order = try await send(db, "orders", method: "PATCH", token: maya.token, query: ["id": created.id], body: [
@@ -51,11 +54,11 @@ struct PurchaseFlowTests {
         let shown: OrderEnvelope = try await send(db, "orders", token: maya.token, query: ["id": created.id])
         let pin = try #require(shown.order?.confirmationPin)
         let delivered: Order = try await send(db, "orders", method: "PATCH", token: jordan.token, query: ["id": created.id], body: ["status": "delivered", "pin": pin])
-        #expect(delivered.runnerShareCents == 640)
+        #expect(delivered.runnerShareCents == 120)
         #expect(delivered.itemSummary == "Two takeout bags: one rice bowl and one sandwich.")
 
         let ledger: LedgerList = try await send(db, "ledger", token: jordan.token, query: ["order": created.id])
-        #expect(ledger.entries.filter { $0.kind == "earning" }.map(\.cents) == [640])
+        #expect(ledger.entries.filter { $0.kind == "earning" }.map(\.cents) == [120])
         #expect(!ledger.entries.contains { $0.kind.hasPrefix("merchandise") })
 
         let home = try await postPickup(db, token: maya.token, trip: trip, key: "personal-item", kind: "personal", ready: ready)
@@ -73,7 +76,6 @@ struct PurchaseFlowTests {
 
     private func postPickup(_ db: AppDatabase, token: String, trip: Trip, key: String, kind: String, ready: String) async throws -> Order {
         var body: [String: Any] = [
-            "trip_id": trip.id,
             "restaurant_name": kind == "personal" ? "Sample house — not a real address" : "Bayou Bowl Kitchen",
             "restaurant_lat": trip.originLat,
             "restaurant_lng": trip.originLng,

@@ -5,16 +5,28 @@ import SwiftUI
 struct GoogleRouteMap: UIViewRepresentable {
     var path: [[Double]]
 
-    func makeUIView(context: Context) -> GMSMapView {
+    func makeUIView(context: Context) -> UIView {
+        let container = UIView()
+        container.clipsToBounds = true
         let map = GMSMapView()
+        map.translatesAutoresizingMaskIntoConstraints = false
         map.isMyLocationEnabled = false
         map.settings.myLocationButton = false
         map.settings.compassButton = false
         map.accessibilityLabel = "Map of the delivery route"
-        return map
+        container.addSubview(map)
+        NSLayoutConstraint.activate([
+            map.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            map.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            map.topAnchor.constraint(equalTo: container.topAnchor),
+            map.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+        ])
+        context.coordinator.map = map
+        return container
     }
 
-    func updateUIView(_ map: GMSMapView, context: Context) {
+    func updateUIView(_ container: UIView, context: Context) {
+        guard let map = context.coordinator.map else { return }
         map.clear()
         let coordinates = path.compactMap { pair -> CLLocationCoordinate2D? in
             guard pair.count == 2, abs(pair[0]) <= 90, abs(pair[1]) <= 180 else { return nil }
@@ -36,5 +48,11 @@ struct GoogleRouteMap: UIViewRepresentable {
             let marker = GMSMarker(position: coordinate)
             marker.map = map
         }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    final class Coordinator {
+        var map: GMSMapView?
     }
 }

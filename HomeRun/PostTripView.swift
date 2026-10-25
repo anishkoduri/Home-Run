@@ -19,6 +19,7 @@ struct PostTripView: View {
             VStack(alignment: .leading, spacing: 16) {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Route").font(Theme.section())
+                    RequiredLabel(title: "Driving from", required: true)
                     Picker("Driving from", selection: $origin) {
                         Text("Choose a city").tag("")
                         ForEach(Places.selectableCities) { Text($0.name).tag($0.name) }
@@ -43,7 +44,7 @@ struct PostTripView: View {
                                 .foregroundStyle(Theme.bad)
                         }
                     }
-                    TextField("Search a restaurant", text: $stopQuery)
+                    EntryField("Search a restaurant", text: $stopQuery)
                         .padding(12)
                         .frame(minHeight: 44)
                         .sketchPanel()
@@ -65,7 +66,8 @@ struct PostTripView: View {
                 .padding(16)
                 .sketchPanel()
 
-                TextField("Notes for customers", text: $notes, axis: .vertical)
+                RequiredLabel(title: "Notes for customers", required: false)
+                EntryField("Notes for customers", text: $notes, axis: .vertical, identifier: "trip-notes")
                     .padding(12)
                     .frame(minHeight: 44)
                     .sketchPanel()

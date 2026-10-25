@@ -1,16 +1,18 @@
 # Home Run demo progress
 
-Updated after the product-vision corrections: intentional city picker, short logo launch, sample sign-in, both roles, tab roots, pickup-limit wording, editorial discovery, a visible home pickup, the primary demo email, and Active / Past / My Faves. This file is a checkpoint, not a claim that the full specification is finished. Live Google checks and a full tapped walkthrough stay pending.
+Marketplace checkpoint: customers post with Post pickup request and cannot address it to a runner or a trip. The server rejects a trip id on a new request. Discover trip rows are open drives only. Runners use Available requests, sorted Latest, Closest, or Recommended, and claim. Closest and the claim quote use approximate geographic distance and are labeled as not a driving route. A fee the customer has not already approved is a 15-minute offer. Requests already assigned to a runner stay on Deliveries. Text entry goes through `EntryField`. No Xcode console error was captured for the earlier tap failure. `LaunchSlide` follows the slide in `a5091dd` and also shows the mark on the first frame. Google Maps startup runs in `RootView.task`, not `App.init`. Live Google checks remain pending.
 
-`xcodebuild test -only-testing:HomeRunTests` on scheme HomeRun, iPhone 17 `C7D34B0F-ABB5-4641-97C3-11DB5357DFE0`, derived data `/tmp/HomeRunDD`: TEST SUCCEEDED. That run includes `VisionCorrectionsTests` (city-picker gate, customer wording, editorial order, primary demo email) plus the existing journey, purchase, trip-edit, pricing, and demo-rule tests. An earlier run in the same pass failed one expectation, `race.title.contains("last spot")`, because scenario 7 is now titled “The last pickup”. The expectation was updated before the succeeding run.
+`xcodebuild test -only-testing:HomeRunTests` on scheme HomeRun, iPhone 17 `C7D34B0F-ABB5-4641-97C3-11DB5357DFE0`, derived data `/tmp/HomeRunDD`: TEST SUCCEEDED. That run includes `MarketplaceTests` (post without a runner, a trip id on a new request is rejected, one active claim, a second runner blocked, no self-claim, incremental distance is not the whole drive, Latest by timestamp then id, Closest by geographic distance, Recommended preferring the selected area) plus the existing journey, purchase, trip-edit, pricing, vision, and demo-rule tests.
 
-`xcodebuild test -only-testing:HomeRunUITests` on the same destination: TEST SUCCEEDED. `LaunchSmokeTests` taps Explore the demo when that button is shown, confirms Home, Discover, Orders, and Profile, switches to Bring food and back with Get food, opens Demo controls, and checks scenario 1. It does not walk the ten order journeys and it does not prove live Google search, photos, maps, or routes.
+`xcodebuild test -only-testing:HomeRunUITests` on the same destination: TEST SUCCEEDED. `LaunchSmokeTests` covers demo entry, the four customer tabs, Bring food and Get food, and scenario 1. `testTypingAPickupRequestAndATripNote` types a home-pickup description, leaves that form by tapping Orders, Discover, Home, and Profile, then types a trip note. It does not measure the system maroon launch interval, does not prove a road route, and does not prove live Google search, photos, maps, or routes.
+
+Earlier product-vision notes: intentional city picker, sample sign-in, both roles, tab roots, pickup-limit wording, editorial discovery, a visible home pickup, the primary demo email, and Active / Past / My Faves. An earlier unit run failed `race.title.contains("last spot")` because scenario 7 is titled “The last pickup”; that expectation was updated before the succeeding runs.
 
 ## Where to paste the Maps SDK key
 
 Paste it locally in `Config/Local.xcconfig`, on the `GOOGLE_MAPS_IOS_API_KEY` line, after the equals sign. No quotes. That file is listed in `.gitignore`. Do not paste the key into `HomeRun/Info.plist`, Swift source, or chat.
 
-The HomeRun target loads `Config/Shared.xcconfig` for Debug and Release. That file includes `Local.xcconfig` when it exists and writes the values into the built Info.plist as `GOOGLE_MAPS_IOS_API_KEY`, `GOOGLE_PLACES_API_KEY`, `GOOGLE_ROUTES_API_KEY`, and the legacy `GOOGLE_MAPS_API_KEY`. `HomeRunApp.init` calls `GoogleMapsStartup.start()` before any screen. A missing or blank key does not call the Maps SDK, and the existing Apple map stays.
+The HomeRun target loads `Config/Shared.xcconfig` for Debug and Release. That file includes `Local.xcconfig` when it exists and writes the values into the built Info.plist as `GOOGLE_MAPS_IOS_API_KEY`, `GOOGLE_PLACES_API_KEY`, `GOOGLE_ROUTES_API_KEY`, and the legacy `GOOGLE_MAPS_API_KEY`. `RootView.task` calls `GoogleMapsStartup.start()` after the first frame, then restores the session. `App.init` does not. A missing or blank key does not call the Maps SDK, and the existing Apple map stays.
 
 `GoogleCredentials` never prints a key. Profile shows only “configured” or “missing” in Debug builds.
 
@@ -32,7 +34,7 @@ The Maps SDK key does not authorize Places or Routes. Leave those two lines blan
 | --- | --- | --- |
 | Gitignored local keys, Maps SDK init, Places and Routes REST split | Implemented. Live in-app checks still pending | `Config/Shared.xcconfig`, `HomeRun/GoogleCredentials.swift`, `HomeRun/Places.swift` |
 | Pickup city before search, sample catalog only when the Places key is absent | Implemented. In-app Google results are not marked passed | `HomeRun/DiscoverView.swift`, `HomeRun/PlacePhoto.swift` |
-| Cents pricing, 80% share, shared-stop discount defined and off, over 30 extra minutes reviews | Implemented and unit-tested | `HomeRun/PricingPolicy.swift`, `HomeRunTests/` |
+| Cents pricing, 60% of the runner's time and distance, then plus 15% (Home Run keeps the 15%), shared-stop discount defined and off, over 30 extra minutes reviews | Implemented and unit-tested | `HomeRun/PricingPolicy.swift`, `HomeRunTests/` |
 | Demo people, including Taylor Brooks in demo tools only, clock, Houston/Dallas/Austin trips, detour and weight limits | Implemented in the on-device store | `HomeRun/Store.swift` |
 | Quote, submit, accept, PIN, messages, simulated share | Store journey test passed. Not tapped in the simulator | `HomeRunTests/JourneyTests.swift` |
 | Counteroffer, decline reason, quote expiry, cancellation release/refund, append-only ledger, support refund, payout | Rules unit-tested. Journey test covers capture, one earning, and a failed second accept | `HomeRun/DemoRules.swift`, `HomeRun/Store.swift` |
@@ -86,8 +88,8 @@ Live Google checks and a tapped walkthrough remain externally blocked on this ma
 Preparation and performance are separate. Profile → Demo controls → the numbered scenario resets fictional demo data and shows the steps. Then use the normal tabs.
 
 1. Houston dinner. Anish, Bayou Bowl Kitchen, Pickup details, Campus Library Plaza, $8 delivery fee. Jordan accepts. Anish adds store confirmation. Jordan reviews it, then completes the code. Earnings $6.40. No merchandise charge.
-2. Worth the detour. Dallas, labeled 6 miles and 12 minutes, $15.50 and $12.40. Avery completes it.
-3. A little heavier. Austin, Sam's trip. 35 lb quotes $15 / $12. Unknown or over 50 lb stays in review. An $18 counteroffer needs Anish's approval and records a $14.40 share.
+2. Worth the detour. Dallas, labeled 6 miles and 12 minutes. The runner earns the extra time and distance; the customer pays that plus 15%. Avery completes it.
+3. A little heavier. Austin, Sam's trip. 35 lb is the runner amount plus 15%. Unknown or over 50 lb stays in review. An $18 counteroffer needs Anish's approval. The runner keeps the amount before the 15%.
 4. One stop, two orders. Anish and Alex both request Bayou Bowl. Separate orders and codes. The $2 shared-stop discount stays off.
 5. Catch the next trip. San Antonio has no trip. Save a request, publish a matching trip, see one notice, and do not get a charge.
 6. Plans change. Jordan cancels the Houston trip. Anish's accepted order is refunded.

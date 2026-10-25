@@ -2,9 +2,14 @@ import Foundation
 
 /// Authoritative demo delivery fee. Amounts are USD cents. Views display this result; they do not recompute it.
 enum PricingPolicy {
-    static let version = "demo-2026-10"
-    static let baseCents = 800
-    static let runnerBasisPoints = 8_000
+    static let version = "demo-2026-10-scale"
+    /// Runner's minimum for making the stop, before the 60% scale. The customer pays the scaled amount plus 15%.
+    static let stopCents = 200
+    /// Runner pay is 60% of the stop, distance, time, weight, and waiting total.
+    static let quoteScaleBasisPoints = 6_000
+    /// 15% of the runner's time-and-distance amount. Not a flat fee.
+    static let markupBasisPoints = 1_500
+    static let baseCents = stopCents
     /// Shared-stop discount is defined and kept off. Turning it on would change quoted totals.
     static let sharedStopDiscountCents = 200
     static let sharedStopDiscountEnabled = false
@@ -51,27 +56,37 @@ enum PricingPolicy {
 
         let miles = Decimal(meters) / Decimal(string: "1609.344")!
         let minutes = Decimal(seconds) / 60
-        let withinRoute = miles <= 1 && minutes <= 5
-        let routeCents = withinRoute ? 0 : halfUp(miles * 75) + halfUp(minutes * 25)
+        // $0.40 per extra mile and $0.15 per extra minute. This is the detour, not the whole intercity drive.
+        let routeCents = halfUp(miles * 40) + halfUp(minutes * 15)
         let weightCents: Int
         if pounds <= 10 { weightCents = 0 }
-        else if pounds <= 25 { weightCents = 300 }
-        else { weightCents = 700 }
+        else if pounds <= 25 { weightCents = 200 }
+        else { weightCents = 400 }
         let extraWait = max(0, input.agreedWaitingMinutes - 5)
-        let waitingCents = extraWait * 25
-        let bulkyCents = input.bulky ? 1_000 : 0
-        let total = baseCents + routeCents + weightCents + waitingCents + bulkyCents
-        let share = halfUp(Decimal(total) * Decimal(runnerBasisPoints) / 10_000)
+        let waitingCents = extraWait * 10
+        let bulkyCents = input.bulky ? 400 : 0
+        let raw = stopCents + routeCents + weightCents + waitingCents + bulkyCents
+        let runner = scaled(raw)
         return .quoted(Quote(
             version: version,
-            baseCents: baseCents,
+            baseCents: stopCents,
             routeCents: routeCents,
             weightCents: weightCents,
             waitingCents: waitingCents,
             bulkyCents: bulkyCents,
-            totalCents: total,
-            runnerShareCents: share
+            totalCents: markedUp(runner),
+            runnerShareCents: runner
         ))
+    }
+
+    /// Sixty percent of a component total, rounded to the nearest cent.
+    static func scaled(_ cents: Int) -> Int {
+        (max(0, cents) * quoteScaleBasisPoints + 5_000) / 10_000
+    }
+
+    /// Customer total is the runner amount plus 15%, rounded to the nearest cent.
+    static func markedUp(_ runnerCents: Int) -> Int {
+        (max(0, runnerCents) * (10_000 + markupBasisPoints) + 5_000) / 10_000
     }
 
     static func halfUp(_ value: Decimal) -> Int {

@@ -25,6 +25,34 @@ final class AppModel {
     var cityPickerOpen = false
     var stagedFavorite: SavedPlace?
     var driveRootTick = 0
+    var runnerArea = ""
+    var runnerAreaSource = ""
+    var runnerLat: Double?
+    var runnerLng: Double?
+
+    var runnerOrigin: RequestRanking.Origin? {
+        guard let runnerLat, let runnerLng, !runnerAreaSource.isEmpty else { return nil }
+        return RequestRanking.Origin(lat: runnerLat, lng: runnerLng, label: runnerArea, source: runnerAreaSource)
+    }
+
+    func setManualArea(_ city: String) {
+        guard let place = Places.city(named: city) else { return }
+        runnerArea = place.name
+        runnerAreaSource = "manual"
+        runnerLat = place.lat
+        runnerLng = place.lng
+        UserDefaults.standard.set(place.name, forKey: "homerun.runnerArea")
+        UserDefaults.standard.set("manual", forKey: "homerun.runnerAreaSource")
+    }
+
+    func setDeviceArea(lat: Double, lng: Double, label: String) {
+        runnerArea = label
+        runnerAreaSource = "device"
+        runnerLat = lat
+        runnerLng = lng
+        UserDefaults.standard.set(label, forKey: "homerun.runnerArea")
+        UserDefaults.standard.set("device", forKey: "homerun.runnerAreaSource")
+    }
 
     enum AppSide: Equatable { case ordering, driving }
 
@@ -33,6 +61,12 @@ final class AppModel {
         let stored = UserDefaults.standard.string(forKey: "homerun.pickupCity")
         pickupCity = Places.city(named: stored ?? "")?.name ?? Places.origins[0].name
         pickupCityConfirmed = UserDefaults.standard.bool(forKey: "homerun.pickupCityConfirmed")
+        runnerArea = UserDefaults.standard.string(forKey: "homerun.runnerArea") ?? ""
+        runnerAreaSource = UserDefaults.standard.string(forKey: "homerun.runnerAreaSource") ?? ""
+        if runnerAreaSource == "manual", let place = Places.city(named: runnerArea) {
+            runnerLat = place.lat
+            runnerLng = place.lng
+        }
     }
 
     func confirmPickupCity(_ name: String) {

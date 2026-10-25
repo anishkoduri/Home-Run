@@ -68,6 +68,12 @@ actor AppDatabase {
             }
             if changed { try? save() }
         }
+        var labelsChanged = false
+        for index in db.orders.indices where db.orders[index].destinationLabel.contains("demo location") {
+            db.orders[index].destinationLabel = db.orders[index].destinationLabel.replacingOccurrences(of: " — demo location", with: "")
+            labelsChanged = true
+        }
+        if labelsChanged { try? save() }
         let limits: [String: (Double, Double)] = [
             "demo-trip-jordan": (50, 50),
             "demo-trip-jordan-later": (50, 50),
@@ -106,6 +112,8 @@ actor AppDatabase {
             changed = true
         }
         if seedHistoryIfNeeded() { changed = true }
+        if seedOpenRequestsIfNeeded() { changed = true }
+        if seedCityRunnersIfNeeded() { changed = true }
         for index in db.orders.indices where db.orders[index].orderingModel == nil && db.orders[index].merchandiseCents != nil {
             db.orders[index].orderingModel = "runner_purchase"
             changed = true
@@ -174,17 +182,25 @@ actor AppDatabase {
             return try encode(Okay(ok: true))
         case ("orders", "GET"):
             if remindMissingHandoff(for: user) { try? save() }
+            releaseExpiredOffers()
             if let id = query["id"] {
-                let order = db.orders.first { $0.id == id && ($0.customerId == user.id || $0.driverId == user.id) }
+                let order = db.orders.first { $0.id == id && canRead($0, user: user) }
                 return try encode(OrderBox(order: order.map { presented($0, viewer: user) }))
             }
-            let driver = query["role"] == "driver"
-            let orders = db.orders
-                .filter { driver ? $0.driverId == user.id : $0.customerId == user.id }
+            let orders: [Order]
+            if query["role"] == "available" {
+                let city = query["city"] ?? ""
+                orders = db.orders.filter { available($0, to: user, city: city) }
+            } else if query["role"] == "driver" {
+                orders = db.orders.filter { $0.driverId == user.id }
+            } else {
+                orders = db.orders.filter { $0.customerId == user.id }
+            }
+            let listed = orders
                 .sorted { $0.createdAt > $1.createdAt }
                 .prefix(100)
                 .map { presented($0, viewer: user) }
-            return try encode(Array(orders))
+            return try encode(Array(listed))
         case ("orders", "POST"):
             return try encode(try createOrder(user: user, body: payload))
         case ("orders", "PATCH"):
@@ -336,8 +352,14 @@ actor AppDatabase {
         if !mine, let city = query["city"], !city.isEmpty {
             trips = trips.filter { $0.originCity == city }
         }
-        trips.sort { (Self.parse($0.departureAt) ?? .distantPast) < (Self.parse($1.departureAt) ?? .distantPast) }
-        if mine { trips.reverse() }
+        if mine {
+            trips.sort { (Self.parse($0.departureAt) ?? .distantPast) > (Self.parse($1.departureAt) ?? .distantPast) }
+        } else {
+            trips.sort { lhs, rhs in
+                if lhs.createdAt != rhs.createdAt { return lhs.createdAt > rhs.createdAt }
+                return lhs.id > rhs.id
+            }
+        }
         let limit = min(Int(query["limit"] ?? "") ?? 50, 100)
         return trips.prefix(limit).map(presented)
     }
@@ -643,6 +665,14 @@ actor AppDatabase {
         db.orders.filter { $0.tripId == tripId && Self.active.contains($0.status) }.count
     }
 
+    private func enforceTripCapacity(_ tripId: String, excluding orderId: String) throws {
+        let load = db.orders.filter { $0.tripId == tripId && $0.id != orderId && Self.active.contains($0.status) }.count
+        let cap = db.trips.first { $0.id == tripId }?.maxOrders ?? 0
+        guard cap > 0, load < cap else {
+            throw APIError(message: "This trip is already at its pickup limit.", code: "bad_request")
+        }
+    }
+
     private func hasCommitment(_ tripId: String) -> Bool { committedCount(tripId) > 0 }
 
     private func validateStops(_ rows: [TripStop], trip: Trip) throws {
@@ -741,20 +771,8 @@ actor AppDatabase {
     }
 
     private func createOrder(user: StoredUser, body: [String: Any]) throws -> Order {
-        guard let tripId = text(body["trip_id"], max: 80), let trip = db.trips.first(where: { $0.id == tripId }) else {
-            throw APIError(message: "Trip not found.", code: "bad_request")
-        }
-        guard user.id != trip.driverId else {
-            throw APIError(message: "You cannot request delivery on your own trip.", code: "bad_request")
-        }
-        guard trip.status == "scheduled", (Self.parse(trip.departureAt) ?? .distantPast) >= DemoClock.now else {
-            throw APIError(message: "This trip is no longer accepting requests.", code: "bad_request")
-        }
-        if let cap = trip.maxDetourMinutes, let extra = Self.number(body["extra_seconds"]), extra / 60 > cap {
-            throw APIError(message: "That stop is over this trip's detour time.", code: "bad_request")
-        }
-        if let cap = trip.maxDetourMiles, let meters = Self.number(body["extra_meters"]), meters / 1609.344 > cap {
-            throw APIError(message: "That stop is over this trip's detour distance.", code: "bad_request")
+        if let tripId = text(body["trip_id"], max: 80), !tripId.isEmpty {
+            throw APIError(message: "A request can't be sent to a specific runner.", code: "bad_request")
         }
         let destinationType = text(body["destination_type"], max: 20)
         guard destinationType == "campus" || destinationType == "address" else {
@@ -780,9 +798,9 @@ actor AppDatabase {
         }
         var order = Order(
             id: UUID().uuidString,
-            tripId: trip.id,
+            tripId: "",
             customerId: user.id,
-            driverId: trip.driverId,
+            driverId: "",
             restaurantPlaceId: text(body["restaurant_place_id"], max: 200),
             restaurantName: try required(body["restaurant_name"], max: 120, message: "Choose a restaurant."),
             restaurantAddress: text(body["restaurant_address"], max: 200),
@@ -853,7 +871,7 @@ actor AppDatabase {
                     throw APIError(message: "Choose when the item will be ready.", code: "bad_request")
                 }
             } else if flag(body["already_ordered"]) == true {
-                try storeHandoff(&order, body: body, trip: trip, creating: true)
+                try storeHandoff(&order, body: body, trip: nil, creating: true)
                 order.alreadyOrdered = true
             }
             if let encoded = text(body["screenshot_base64"], max: 12_000_000) {
@@ -862,19 +880,14 @@ actor AppDatabase {
             if order.handoffSubmittedAt == nil { order.pickupName = nil }
         }
         order.purchaseState = nil
-        if let departure = Self.parse(trip.departureAt) {
-            let deadline = DemoRules.quoteDeadline(submitted: DemoClock.now, cutoff: departure)
-            order.quoteExpiresAt = Self.plain.string(from: deadline)
-        }
+        order.pickupCity = text(body["pickup_city"], max: 80)
+        order.pickupUnit = text(body["pickup_unit"], max: 40)
+        if body["location_resolved"] != nil { order.locationResolved = flag(body["location_resolved"]) }
+        order.quoteState = "preliminary"
+        order.quoteCents = nil
+        order.deliveryFee = nil
+        order.runnerShareCents = nil
         db.orders.append(order)
-        if order.quoteState == "quoted", let cents = order.quoteCents {
-            postLedger(orderId: order.id, kind: "delivery-authorize", cents: cents, key: "delivery-authorize:\(order.id)")
-            if order.isRunnerPurchase, let goods = order.merchandiseCents, goods > 0 {
-                postLedger(orderId: order.id, kind: "merchandise-authorize", cents: goods, key: "merchandise-authorize:\(order.id)")
-            }
-            let noun = order.orderingModel == "personal" ? "A personal-item pickup" : order.restaurantName
-            notify(recipient: order.driverId, type: "request", orderId: order.id, title: "New pickup request", body: "\(noun) is waiting for you.")
-        }
         try save()
         return presented(order, viewer: user)
     }
@@ -884,9 +897,23 @@ actor AppDatabase {
             throw APIError(message: "Order not found.", code: "not_found")
         }
         var order = db.orders[index]
-        let isDriver = user.id == order.driverId
+        releaseExpiredOffers()
+        order = db.orders[index]
+        if text(body["offer"], max: 20) == "submit" {
+            try submitOffer(user: user, index: index, body: body)
+            return presented(db.orders[index], viewer: user)
+        }
+        let isDriver = !order.driverId.isEmpty && user.id == order.driverId
         let isCustomer = user.id == order.customerId
         guard isDriver || isCustomer else { throw APIError(message: "Not your order.", code: "forbidden") }
+        if text(body["offer_decision"], max: 20) == "approve" {
+            try approveOffer(user: user, index: index)
+            return presented(db.orders[index], viewer: user)
+        }
+        if text(body["offer_decision"], max: 20) == "decline" {
+            try declineOffer(user: user, index: index)
+            return presented(db.orders[index], viewer: user)
+        }
 
         let editingDelivery = ["destination_type", "destination_label", "destination_lat", "destination_lng", "customer_note"].contains { body.keys.contains($0) }
         if editingDelivery {
@@ -1249,10 +1276,151 @@ actor AppDatabase {
     private func presented(_ order: Order, viewer: StoredUser?) -> Order {
         var copy = order
         if let trip = db.trips.first(where: { $0.id == order.tripId }) { copy.trip = presented(trip) }
-        copy.driver = db.users.first { $0.id == order.driverId }.map(profile)
+        copy.driver = order.driverId.isEmpty ? nil : db.users.first { $0.id == order.driverId }.map(profile)
         copy.customer = db.users.first { $0.id == order.customerId }.map(profile)
         if viewer?.id == order.driverId { copy.confirmationPin = nil }
+        let trusted = viewer?.id == order.customerId || (!order.driverId.isEmpty && viewer?.id == order.driverId) || (viewer?.id == order.offerRunnerId && reservationActive(order))
+        if !trusted {
+            copy.accessInstructions = nil
+            copy.pickupCode = nil
+            copy.pickupUnit = nil
+            if copy.destinationType == "address" { copy.destinationLabel = "College Station address" }
+            if let city = copy.pickupCity, !city.isEmpty { copy.restaurantAddress = city }
+        }
         return copy
+    }
+
+    private func canRead(_ order: Order, user: StoredUser) -> Bool {
+        order.customerId == user.id || order.driverId == user.id || available(order, to: user, city: "")
+    }
+
+    private func available(_ order: Order, to user: StoredUser, city: String) -> Bool {
+        guard order.status == .requested, order.driverId.isEmpty, order.customerId != user.id else { return false }
+        if let holder = order.offerRunnerId, holder != user.id, reservationActive(order) { return false }
+        if let place = Places.city(named: city) {
+            guard order.pickupCity?.caseInsensitiveCompare(place.name) == .orderedSame else { return false }
+        }
+        return true
+    }
+
+    private func reservationActive(_ order: Order) -> Bool {
+        guard order.offerRunnerId != nil, let stamp = order.offerExpiresAt, let when = Self.parse(stamp) else { return false }
+        return when >= DemoClock.now
+    }
+
+    private func releaseExpiredOffers() {
+        var changed = false
+        for index in db.orders.indices where db.orders[index].offerRunnerId != nil && !reservationActive(db.orders[index]) && db.orders[index].driverId.isEmpty {
+            db.orders[index].offerRunnerId = nil
+            db.orders[index].offerCents = nil
+            db.orders[index].offerShareCents = nil
+            db.orders[index].offerExpiresAt = nil
+            db.orders[index].offerTripId = nil
+            changed = true
+        }
+        if changed { try? save() }
+    }
+
+    private func submitOffer(user: StoredUser, index: Int, body: [String: Any]) throws {
+        var order = db.orders[index]
+        guard order.customerId != user.id else {
+            throw APIError(message: "You can't accept your own request.", code: "forbidden")
+        }
+        // An unconfirmed address still gets the short local estimate. A precise route can replace it later.
+        guard order.status == .requested, order.driverId.isEmpty else {
+            throw APIError(message: "This request is already assigned.", code: "conflict")
+        }
+        if let holder = order.offerRunnerId, holder != user.id, reservationActive(order) {
+            throw APIError(message: "Another runner already claimed this request.", code: "conflict")
+        }
+        let meters = Self.number(body["extra_meters"]) ?? 0
+        let seconds = Self.number(body["extra_seconds"]) ?? 0
+        let kind = text(body["distance_kind"], max: 20) ?? "geographic"
+        let pounds = order.weightPounds ?? 8
+        let confirmed = pounds <= 50
+        switch PricingPolicy.evaluate(.init(extraMeters: meters, extraSeconds: seconds, weightPounds: pounds, weightConfirmed: confirmed, bulky: order.bulkyItem == true, agreedWaitingMinutes: 0)) {
+        case .manualReview(let reason):
+            throw APIError(message: reason, code: "bad_request")
+        case .quoted(let quote):
+            let locked = order.feeLockedCents
+            if let locked, quote.totalCents == locked {
+                if let tripId = text(body["trip_id"], max: 80), !tripId.isEmpty {
+                    try enforceTripCapacity(tripId, excluding: order.id)
+                    order.tripId = tripId
+                }
+                order.driverId = user.id
+                order.quoteCents = quote.totalCents
+                order.runnerShareCents = quote.runnerShareCents
+                order.deliveryFee = Double(quote.totalCents) / 100
+                order.quoteState = "quoted"
+                order.estimateSource = kind == "road" ? "google" : "geographic"
+                order.offerRunnerId = nil
+                order.status = .accepted
+                order.acceptedAt = Self.stamp()
+                db.orders[index] = order
+                postLedger(orderId: order.id, kind: "delivery-authorize", cents: quote.totalCents, key: "delivery-authorize:\(order.id)")
+                postLedger(orderId: order.id, kind: "delivery-capture", cents: quote.totalCents, key: "delivery-capture:\(order.id)")
+                notify(recipient: order.customerId, type: "accept", orderId: order.id, title: "Request accepted", body: "A runner accepted the delivery fee you already approved.")
+                try save()
+                return
+            }
+            order.offerRunnerId = user.id
+            order.offerCents = quote.totalCents
+            order.offerShareCents = quote.runnerShareCents
+            order.offerMeters = meters
+            order.offerSeconds = seconds
+            order.offerDistanceKind = kind == "road" ? "road" : "geographic"
+            order.offerIncremental = flag(body["incremental"])
+            order.offerTripId = text(body["trip_id"], max: 80)
+            order.offerExpiresAt = Self.plain.string(from: DemoClock.now.addingTimeInterval(RequestRanking.holdSeconds))
+            db.orders[index] = order
+            notify(recipient: order.customerId, type: "offer", orderId: order.id, title: "Delivery offer", body: "A runner offered a delivery fee. It is held for 15 minutes.")
+            try save()
+        }
+    }
+
+    private func approveOffer(user: StoredUser, index: Int) throws {
+        var order = db.orders[index]
+        guard order.customerId == user.id else { throw APIError(message: "Only the customer can approve this offer.", code: "forbidden") }
+        guard let runner = order.offerRunnerId, let cents = order.offerCents, reservationActive(order) else {
+            throw APIError(message: "That offer expired. The request is open again.", code: "bad_request")
+        }
+        guard order.driverId.isEmpty else { throw APIError(message: "This request is already assigned.", code: "conflict") }
+        if let tripId = order.offerTripId, !tripId.isEmpty {
+            try enforceTripCapacity(tripId, excluding: order.id)
+            order.tripId = tripId
+        }
+        order.driverId = runner
+        order.quoteCents = cents
+        order.runnerShareCents = order.offerShareCents
+        order.deliveryFee = Double(cents) / 100
+        order.quoteState = "quoted"
+        order.feeLockedCents = cents
+        order.estimateSource = order.offerDistanceKind == "road" ? "google" : "geographic"
+        order.offerRunnerId = nil
+        order.status = .accepted
+        order.acceptedAt = Self.stamp()
+        db.orders[index] = order
+        postLedger(orderId: order.id, kind: "delivery-authorize", cents: cents, key: "delivery-authorize:\(order.id)")
+        postLedger(orderId: order.id, kind: "delivery-capture", cents: cents, key: "delivery-capture:\(order.id)")
+        notify(recipient: runner, type: "accept", orderId: order.id, title: "Offer approved", body: "The customer approved the delivery fee. The request is yours.")
+        try save()
+    }
+
+    private func declineOffer(user: StoredUser, index: Int) throws {
+        var order = db.orders[index]
+        guard order.customerId == user.id else { throw APIError(message: "Only the customer can decline this offer.", code: "forbidden") }
+        let runner = order.offerRunnerId
+        order.offerRunnerId = nil
+        order.offerCents = nil
+        order.offerShareCents = nil
+        order.offerExpiresAt = nil
+        order.offerTripId = nil
+        db.orders[index] = order
+        if let runner {
+            notify(recipient: runner, type: "offer-declined", orderId: order.id, title: "Offer declined", body: "The request is open for other runners.")
+        }
+        try save()
     }
 
     private func profile(_ user: StoredUser) -> Profile {
@@ -1652,6 +1820,107 @@ actor AppDatabase {
         try save()
         seedDemoIfNeeded()
         _ = seedHistoryIfNeeded()
+        _ = seedOpenRequestsIfNeeded()
+        _ = seedCityRunnersIfNeeded()
+    }
+
+    /// Unassigned pickups so each city filter has something to show. These are not sent to a runner.
+    @discardableResult
+    private func seedOpenRequestsIfNeeded() -> Bool {
+        guard db.users.contains(where: { $0.id == "demo-alex" }) else { return false }
+        let retired = [
+            "demo-open-houston-bowl", "demo-open-houston-jacket", "demo-open-dallas-sandwich",
+            "demo-open-austin-tacos", "demo-open-austin-groceries",
+        ]
+        let before = db.orders.count
+        db.orders.removeAll { retired.contains($0.id) && $0.driverId.isEmpty && $0.status == .requested }
+        var changed = db.orders.count != before
+        let houston = Places.city(named: "Houston")!
+        let dallas = Places.city(named: "Dallas")!
+        let austin = Places.city(named: "Austin")!
+        let drop = Places.city(named: "College Station")!
+        let samples: [(id: String, customer: String, city: String, name: String, summary: String, quantity: String, lat: Double, lng: Double, personal: Bool, hoursAgo: Int)] = [
+            ("demo-open-houston-agas", "demo-alex", "Houston", "Aga's", "Chicken biryani, garlic naan, and two veg samosas.", "1 biryani", 29.6515, -95.5715, false, 1),
+            ("demo-open-houston-home", "demo-taylor", "Houston", "Personal item", "Laptop charger and the textbook on the kitchen table.", "1 charger", houston.lat + 0.03, houston.lng + 0.02, true, 4),
+            ("demo-open-dallas-traderjoes", "demo-alex", "Dallas", "Trader Joe's", "Two bags of Mandarin Orange Chicken and a jar of Cookie Butter.", "3 items", dallas.lat + 0.04, dallas.lng + 0.02, false, 2),
+            ("demo-open-austin-home", "demo-taylor", "Austin", "Personal item", "Gray hoodie and AirPods left on the desk.", "1 hoodie", austin.lat + 0.02, austin.lng + 0.01, true, 3),
+            ("demo-open-houston-whataburger", "demo-alex", "Houston", "Whataburger", "Number 1, no onions, large fry, and a Dr Pepper.", "1 meal", houston.lat + 0.04, houston.lng - 0.03, false, 6),
+            ("demo-open-houston-heb", "demo-taylor", "Houston", "H-E-B", "A dozen eggs, a gallon of milk, and flour tortillas.", "3 items", houston.lat - 0.05, houston.lng + 0.04, false, 7),
+            ("demo-open-dallas-canes", "demo-taylor", "Dallas", "Raising Cane's", "Box Combo, extra Cane's sauce, and a sweet tea.", "1 combo", dallas.lat + 0.03, dallas.lng - 0.04, false, 8),
+            ("demo-open-dallas-home", "demo-alex", "Dallas", "Personal item", "Apartment key and a small duffel by the door.", "1 bag", dallas.lat - 0.03, dallas.lng + 0.03, true, 9),
+            ("demo-open-austin-torchys", "demo-alex", "Austin", "Torchy's Tacos", "Two Trailer Park tacos and a large queso.", "2 tacos", austin.lat - 0.02, austin.lng - 0.03, false, 10),
+            ("demo-open-austin-heb", "demo-taylor", "Austin", "H-E-B", "A rotisserie chicken and a bag of limes.", "2 items", austin.lat + 0.04, austin.lng - 0.02, false, 11),
+        ]
+        for sample in samples {
+            guard !db.orders.contains(where: { $0.id == sample.id }) else { continue }
+            guard db.users.contains(where: { $0.id == sample.customer }) else { continue }
+            let when = Self.plain.string(from: Date().addingTimeInterval(TimeInterval(-sample.hoursAgo * 3_600)))
+            var order = Order(
+                id: sample.id, tripId: "", customerId: sample.customer, driverId: "",
+                restaurantPlaceId: "sample:\(sample.id)", restaurantName: sample.name,
+                restaurantAddress: "\(sample.city), TX",
+                restaurantLat: sample.lat, restaurantLng: sample.lng, restaurantWebsite: nil, placeSource: "sample",
+                destinationType: "campus", destinationLabel: "Memorial Student Center",
+                destinationLat: drop.lat, destinationLng: drop.lng, detourMinutes: nil, deliveryFee: nil, estimateSource: nil,
+                estimatedArrivalAt: nil, customerNote: nil, itemSummary: sample.summary, quoteCents: nil, runnerShareCents: nil,
+                quoteState: "preliminary", confirmationPin: nil, pinAttempts: 0, pickupName: nil, restaurantOrderNumber: nil,
+                pickupReadyAt: nil, pickupInstructions: nil, status: .requested, cancelledBy: nil,
+                acceptedAt: nil, restaurantOrderConfirmedAt: nil, pickedUpAt: nil, onTheWayAt: nil,
+                deliveredAt: nil, declinedAt: nil, cancelledAt: nil, createdAt: when, updatedAt: when,
+                trip: nil, driver: nil, customer: nil
+            )
+            order.orderingModel = sample.personal ? "personal" : "customer_paid"
+            order.personalItem = sample.personal
+            order.itemQuantity = sample.quantity
+            order.contactLabel = sample.customer == "demo-alex" ? "Alex" : "Taylor"
+            order.pickupWindowLabel = "This afternoon"
+            order.pickupCity = sample.city
+            order.locationResolved = true
+            order.weightPounds = sample.personal ? 2 : 6
+            db.orders.append(order)
+            changed = true
+        }
+        if changed { try? save() }
+        return changed
+    }
+
+    /// A second posted runner in Houston, Dallas, and Austin so the coverage map is not one pin per city.
+    @discardableResult
+    private func seedCityRunnersIfNeeded() -> Bool {
+        func person(_ id: String, _ name: String, _ email: String) -> StoredUser {
+            StoredUser(id: id, email: email, passwordHash: Self.hash("demo", salt: id), passwordSalt: id, displayName: name, avatarUrl: nil, paymentHandle: nil, createdAt: Self.stamp(), intent: AccountUse.deliver.rawValue)
+        }
+        var changed = false
+        for runner in [
+            person("demo-riley", "Riley Nguyen", "riley@demo.local"),
+            person("demo-quinn", "Quinn Alvarez", "quinn@demo.local"),
+            person("demo-drew", "Drew Shah", "drew@demo.local"),
+        ] where !db.users.contains(where: { $0.id == runner.id }) {
+            db.users.append(runner)
+            changed = true
+        }
+        let houston = Places.city(named: "Houston")!
+        let dallas = Places.city(named: "Dallas")!
+        let austin = Places.city(named: "Austin")!
+        let planned: [(id: String, driver: String, city: String, days: Int, hour: Int, stop: String, lat: Double, lng: Double)] = [
+            ("demo-trip-riley", "demo-riley", "Houston", 1, 18, "Whataburger", houston.lat + 0.35, houston.lng - 0.28),
+            ("demo-trip-quinn", "demo-quinn", "Dallas", 1, 15, "Raising Cane's", dallas.lat + 0.32, dallas.lng + 0.36),
+            ("demo-trip-drew", "demo-drew", "Austin", 2, 12, "Torchy's Tacos", austin.lat - 0.30, austin.lng + 0.26),
+        ]
+        for row in planned where !db.trips.contains(where: { $0.id == row.id }) {
+            let when = DemoClock.chicago(row.days, hour: row.hour, minute: 0)
+            db.trips.append(Trip(
+                id: row.id, driverId: row.driver, originCity: row.city, originLat: row.lat, originLng: row.lng,
+                destinationCity: Places.destination.name, destinationLat: Places.destination.lat, destinationLng: Places.destination.lng,
+                departureAt: Self.plain.string(from: when), maxOrders: 3, notes: "Demo trip. Sample stop, not a live partnership.",
+                status: "scheduled", createdAt: Self.stamp(), driver: nil,
+                stops: [TripStop(id: row.id + "-stop", tripId: row.id, placeId: "sample:\(row.id)", restaurantName: row.stop, address: "\(row.city), TX", lat: row.lat, lng: row.lng, stopOrder: 0)],
+                activeOrders: nil
+            ))
+            changed = true
+        }
+        if changed { try? save() }
+        return changed
     }
 
     @discardableResult
@@ -1730,21 +1999,21 @@ actor AppDatabase {
             fixture = "standard"; samples = false; city = "Houston"; clearTerms = false
             title = "From Houston, with dinner"
             pointBayou("demo-trip-jordan")
-            instructions = "Stay as Anish Koduri. Discover is Houston. Choose Bayou Bowl Kitchen, Restaurant or store, and Campus Library Plaza. In Pickup details, describe the bags. Wait for Jordan to accept before ordering. The labeled route is within 1 mile and 5 minutes, so the delivery fee is $8. Submit. Profile → Demo people → Jordan Ellis and accept. Switch back to Anish. Order and pay the store yourself, then add the name, reference, and pickup time. Jordan taps Review pickup details, then Details received, confirms the bags match, and continues through the code. Earnings shows $6.40. Nothing is charged."
+            instructions = "Stay as Anish Koduri. Choose Houston, search Bayou Bowl Kitchen, pick a meetup, and tap Continue. Describe the bags, quantity, contact, and window, then post the request. Profile → Demo people → Jordan Ellis. Requests → Accept. Switch back to Anish and approve that delivery fee. Order and pay the store yourself, then add the name, reference, and pickup time. Jordan taps Review pickup details, then Details received, confirms the bags match, and continues through the code. The customer pays the runner's distance estimate plus 15%. Nothing is charged."
         case 2:
             fixture = "detour"; samples = false; city = "Dallas"; clearTerms = false
             title = "Worth the detour"
-            instructions = "Stay as Anish Koduri. The pickup city is Dallas and Avery Patel's trip is open. Choose a Dallas place and describe the order in Pickup details. The labeled fixture is 6 extra miles and 12 extra minutes: delivery fee $15.50, runner earning $12.40. That earning is only the delivery fee. Submit, switch to Avery, accept, then as Anish add the store confirmation. Avery reviews it and completes the delivery with the code."
+            instructions = "Stay as Anish Koduri. Post a Dallas pickup without choosing Avery. Describe the order. Switch to Avery, open Available requests, and accept. The offer uses extra distance and time from the runner, not the whole Dallas drive, and Anish must approve that fee before it locks. Then add the store confirmation. Avery reviews it and completes the delivery with the code. The customer pays that estimate plus 15%."
         case 3:
             fixture = "standard"; samples = false; city = "Austin"; clearTerms = false
             title = "A little heavier"
-            instructions = "Stay as Anish Koduri. Austin uses Sam Rivera's trip. For a restaurant order, turn on About 35 lb. The delivery fee becomes $15 and the runner earning is $12. Or choose Home or personal item and leave the weight blank: the price stays in review rather than $0. Sam can counteroffer $18 on the delivery fee. Approve it as Anish. The simulated earning becomes $14.40. A heavier offer still cannot pass Sam's limits."
+            instructions = "Stay as Anish Koduri. Post an Austin restaurant pickup and include a weight above 25 lb, or post a home pickup and leave the weight blank. A blank weight is estimated at about 8 lb. Over 50 lb stays in review. Switch to Sam Rivera, accept from Available requests, and approve the offer as Anish. The customer pays the runner's estimate plus 15%."
         case 4:
             fixture = "standard"; samples = false; city = "Houston"; clearTerms = false
             title = "One stop, two orders"
             pointBayou("demo-trip-jordan")
             if let index = db.trips.firstIndex(where: { $0.id == "demo-trip-jordan" }) { db.trips[index].maxOrders = 4 }
-            instructions = "Anish Koduri requests Bayou Bowl Kitchen and describes the bags. Profile → Demo people → Alex Morgan and request the same place and meetup. The orders stay separate, each with its own confirmation and code. The $2 shared-stop discount is defined and off. Jordan accepts both. Each customer then pays the store and adds pickup confirmation."
+            instructions = "Anish Koduri posts a Bayou Bowl Kitchen pickup without choosing a runner. Profile → Demo people → Alex Morgan and post the same place and meetup. The requests stay separate. Jordan claims each from Available requests, and each customer approves that fee. Each customer then pays the store and adds pickup confirmation. The $2 shared-stop discount stays defined and off."
         case 5:
             fixture = ""; samples = false; city = "San Antonio"; clearTerms = false
             title = "Catch the next trip"
@@ -1760,7 +2029,7 @@ actor AppDatabase {
             if let index = db.trips.firstIndex(where: { $0.id == "demo-trip-jordan" }) { db.trips[index].maxOrders = 1 }
             stageOrder(id: "demo-order-race-maya", tripId: "demo-trip-jordan", customerId: "demo-maya", placeId: "sample:bayou-bowl", name: "Bayou Bowl Kitchen", lat: 29.743, lng: -95.369, status: .requested)
             stageOrder(id: "demo-order-race-alex", tripId: "demo-trip-jordan", customerId: "demo-alex", placeId: "sample:bayou-coffee", name: "Bayou Coffee Counter", lat: 29.752, lng: -95.358, status: .requested)
-            instructions = "Profile → Demo people → Jordan Ellis. Requests lists Anish Koduri and Alex Morgan, each with pickup details. Accept one. Accepting the other fails because the pickup limit is full, and that delivery fee is not captured."
+            instructions = "Profile → Demo people → Jordan Ellis. Deliveries lists Anish Koduri and Alex Morgan. These requests are already assigned to this trip. Accept one. Accepting the other fails because the pickup limit is full, and that delivery fee is not captured."
         case 8:
             fixture = ""; samples = false; city = "Houston"; clearTerms = false
             title = "Make it right"
@@ -1800,7 +2069,7 @@ actor AppDatabase {
             id: id, tripId: tripId, customerId: customerId, driverId: trip.driverId,
             restaurantPlaceId: placeId, restaurantName: name, restaurantAddress: "Sample address",
             restaurantLat: lat, restaurantLng: lng, restaurantWebsite: nil, placeSource: "sample",
-            destinationType: "campus", destinationLabel: "Campus Library Plaza — demo location",
+            destinationType: "campus", destinationLabel: "Campus Library Plaza",
             destinationLat: 30.618, destinationLng: -96.338, detourMinutes: 0, deliveryFee: 8, estimateSource: "fixture",
             estimatedArrivalAt: nil, customerNote: nil, itemSummary: "1× Rice bowl", quoteCents: 800, runnerShareCents: 640,
             quoteState: "quoted", confirmationPin: nil, pinAttempts: 0, pickupName: "HR-SCENARIO", restaurantOrderNumber: nil,
@@ -1938,7 +2207,7 @@ actor AppDatabase {
             id: id, tripId: trip, customerId: "demo-maya", driverId: "demo-jordan",
             restaurantPlaceId: "sample:history", restaurantName: "Bayou Bowl Kitchen", restaurantAddress: "Sample address, Houston, TX",
             restaurantLat: houston.lat, restaurantLng: houston.lng, restaurantWebsite: nil, placeSource: "sample",
-            destinationType: "campus", destinationLabel: "Campus Library Plaza — demo location",
+            destinationType: "campus", destinationLabel: "Campus Library Plaza",
             destinationLat: 30.618, destinationLng: -96.338, detourMinutes: 4, deliveryFee: fee, estimateSource: "sample",
             estimatedArrivalAt: nil, customerNote: nil, itemSummary: "Rice bowl · 1 · 2 lb", quoteCents: Int(fee * 100), runnerShareCents: share,
             quoteState: "quoted", confirmationPin: nil, pinAttempts: 0, pickupName: "HR-DEMO-104", restaurantOrderNumber: nil,
@@ -2001,6 +2270,9 @@ actor AppDatabase {
             DemoActor(id: "demo-jordan", name: "Jordan Ellis", detail: "Runner · Houston"),
             DemoActor(id: "demo-avery", name: "Avery Patel", detail: "Runner · Dallas"),
             DemoActor(id: "demo-sam", name: "Sam Rivera", detail: "Runner · Austin"),
+            DemoActor(id: "demo-riley", name: "Riley Nguyen", detail: "Runner · Houston"),
+            DemoActor(id: "demo-quinn", name: "Quinn Alvarez", detail: "Runner · Dallas"),
+            DemoActor(id: "demo-drew", name: "Drew Shah", detail: "Runner · Austin"),
             DemoActor(id: "demo-alex", name: "Alex Morgan", detail: "Customer"),
             DemoActor(id: "demo-taylor", name: "Taylor Brooks", detail: "Demo support only"),
             DemoActor(id: "1", name: "Account 1", detail: "Existing local sign-in"),

@@ -21,6 +21,7 @@ struct HomeView: View {
                     pickupBar
                     VStack(alignment: .leading, spacing: 28) {
                         if let error { ErrorBanner(message: error) }
+                        CoverageMap(trips: trips)
                         activeOrders
                         upcoming
                     }
@@ -162,7 +163,7 @@ struct HomeView: View {
                 .font(Theme.text(.caption))
                 .foregroundStyle(Theme.muted)
             HStack(spacing: 8) {
-                TextField("Restaurant or store", text: $query, prompt: Text("Restaurant or store").foregroundStyle(Theme.muted))
+                EntryField("Restaurant or store", text: $query, prompt: Text("Restaurant or store").foregroundStyle(Theme.muted))
                     .focused($searchFocused)
                     .font(Theme.text(.body))
                     .textFieldStyle(.plain)
@@ -190,11 +191,12 @@ struct HomeView: View {
             HStack(spacing: 8) {
                 if model.pickupCityConfirmed {
                     NavigationLink {
-                        DiscoverView(initialCity: city, embedded: true, personalEntry: true)
+                        PostRequestView(city: city, startPersonal: true)
                     } label: {
                         personalEntryLabel
                     }
                     .buttonStyle(PressStyle())
+                    .accessibilityIdentifier("home-or-personal")
                 } else {
                     Button {
                         model.cityPickerOpen = true
@@ -202,6 +204,7 @@ struct HomeView: View {
                         personalEntryLabel
                     }
                     .buttonStyle(.plain)
+                    .accessibilityIdentifier("home-or-personal")
                 }
             }
         }
@@ -298,7 +301,7 @@ struct HomeView: View {
     private func load() async {
         do {
             let client = try model.client()
-            trips = try await client.store("trips", query: ["limit": "6"])
+            trips = try await client.store("trips", query: ["limit": "12"])
             orders = try await client.store("orders", query: ["role": "customer"])
             error = nil
             loaded = true
@@ -394,7 +397,7 @@ private struct TripRouteDetail: View {
             NavigationLink {
                 DiscoverView(initialCity: trip.originCity, initialQuery: "", focusTripID: trip.id, embedded: true)
             } label: {
-                Text(trip.driverId == model.user?.id ? "Your trip" : "Find a pickup on this trip")
+                Text(trip.driverId == model.user?.id ? "Your trip" : "See this trip")
                     .font(Theme.text(.headline, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity, minHeight: 48)
