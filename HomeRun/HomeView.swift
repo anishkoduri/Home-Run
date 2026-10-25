@@ -25,7 +25,7 @@ struct HomeView: View {
                         upcoming
                     }
                     .padding(.horizontal, 20)
-                    .padding(.top, 28)
+                    .padding(.top, 16)
                     .padding(.bottom, 32)
                 }
             }
@@ -44,15 +44,9 @@ struct HomeView: View {
     private var hero: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .center, spacing: 12) {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Home Run")
-                        .font(.headline.weight(.bold))
-                        .foregroundStyle(.white)
-                    Text(greeting)
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.85))
-                }
-                .accessibilityElement(children: .combine)
+                Text("Home Run")
+                    .font(Theme.display(.headline))
+                    .foregroundStyle(.white)
                 Spacer(minLength: 8)
                 Image("BrandMark")
                     .resizable()
@@ -62,67 +56,76 @@ struct HomeView: View {
                     .accessibilityHidden(true)
             }
             if typeSize.isAccessibilitySize {
-                VStack(alignment: .leading, spacing: 16) {
-                    headline
-                    FoodPlate()
-                }
+                headline
             } else {
-                HStack(alignment: .bottom, spacing: 12) {
+                HStack(alignment: .center, spacing: 12) {
                     headline
                     FoodPlate()
                 }
             }
         }
         .padding(.horizontal, 20)
-        .padding(.top, 4)
-        .padding(.bottom, 20)
+        .padding(.top, 2)
+        .padding(.bottom, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.maroon.ignoresSafeArea(edges: .top))
+        .background {
+            Theme.maroon
+                .overlay(PaperFiber())
+                .ignoresSafeArea(edges: .top)
+        }
     }
 
     private var headline: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Your favorites.\nOn their way home.")
-                .font(Theme.display(.largeTitle))
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Bring something home.")
+                .font(Theme.display(.title2))
                 .foregroundStyle(.white)
                 .fixedSize(horizontal: false, vertical: true)
-            Text("Students already driving to College Station can bring food or groceries from along the trip.")
-                .font(.subheadline)
+            Text("Food runs to College Station.")
+                .font(Theme.text(.subheadline))
                 .foregroundStyle(.white.opacity(0.88))
-                .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
     }
 
-    private var greeting: String {
-        if let name = Format.personalName(model.profile?.displayName) {
-            return "\(Format.greeting()), \(name)"
+    private var pickupTitle: some View {
+        Text("Find a pickup")
+            .font(Theme.display(.headline))
+            .foregroundStyle(Theme.ink)
+            .lineLimit(1)
+            .minimumScaleFactor(0.85)
+    }
+
+    private var cityMenu: some View {
+        Menu {
+            ForEach(Places.origins) { origin in
+                Button(origin.name) { city = origin.name }
+            }
+        } label: {
+            Text(city)
+                .font(Theme.text(.subheadline, weight: .semibold))
+                .foregroundStyle(Theme.maroon)
+                .lineLimit(1)
         }
-        return Format.greeting()
+        .accessibilityLabel("Restaurant city, \(city)")
     }
 
     private var pickupBar: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("Find a pickup")
-                    .font(.subheadline.weight(.bold))
-                    .foregroundStyle(Theme.ink)
-                Spacer()
-                Menu {
-                    ForEach(Places.origins) { origin in
-                        Button(origin.name) { city = origin.name }
-                    }
-                } label: {
-                    Text(city)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Theme.maroon)
-                        .lineLimit(1)
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline) {
+                    pickupTitle
+                    Spacer(minLength: 12)
+                    cityMenu
                 }
-                .accessibilityLabel("Restaurant city, \(city)")
+                VStack(alignment: .leading, spacing: 4) {
+                    pickupTitle
+                    cityMenu
+                }
             }
             HStack(spacing: 8) {
-                TextField("Restaurant, store, or meal", text: $query)
+                TextField("Restaurant or store", text: $query, prompt: Text("Restaurant or store").foregroundStyle(Theme.muted))
                     .focused($searchFocused)
                     .textFieldStyle(.plain)
                     .submitLabel(.search)
@@ -186,7 +189,8 @@ struct HomeView: View {
     @ViewBuilder
     private var upcoming: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Trips to College Station")
+            StitchMark(tint: Theme.maroon.opacity(0.4))
+            Text("Heading to College Station")
                 .font(.title3.weight(.bold))
                 .foregroundStyle(Theme.ink)
             if !loaded && error == nil {
@@ -211,15 +215,18 @@ struct HomeView: View {
     }
 
     private var emptyTrips: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            PlateSketch()
-            Text("No one is driving back yet")
-                .font(.title3.weight(.bold))
+        VStack(alignment: .leading, spacing: 6) {
+            Text("No trips yet.")
+                .font(Theme.display(.headline))
                 .foregroundStyle(Theme.ink)
-            Text("When a student posts a trip to College Station, it shows up here. Find a pickup above, or bring food if you are the one driving.")
-                .font(.subheadline)
+            Text("Driving back? Post your trip.")
+                .font(Theme.text(.subheadline))
                 .foregroundStyle(Theme.muted)
-                .fixedSize(horizontal: false, vertical: true)
+            if model.profile?.use != .order {
+                Button("Bring food") { model.side = .driving }
+                    .font(Theme.text(.body, weight: .semibold))
+                    .frame(minHeight: 44)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 8)

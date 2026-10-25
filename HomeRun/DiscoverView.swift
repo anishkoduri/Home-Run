@@ -60,7 +60,7 @@ struct DiscoverView: View {
     private var browser: some View {
         ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text("Search a real place, then pick the driver with the clearest fee.")
+                    Text("Choose a place, then a trip.")
                         .font(.subheadline)
                         .foregroundStyle(Theme.muted)
                     HStack(spacing: 8) {
@@ -76,7 +76,7 @@ struct DiscoverView: View {
                                 .frame(minHeight: 44)
                         }
                         .accessibilityLabel("Restaurant city, \(city)")
-                        TextField("Restaurant, grocery, or store", text: $search)
+                        TextField("Restaurant or store", text: $search, prompt: Text("Restaurant or store").foregroundStyle(Theme.muted))
                             .textFieldStyle(.plain)
                             .submitLabel(.search)
                             .frame(minHeight: 44)
@@ -96,7 +96,7 @@ struct DiscoverView: View {
                     if searching { ProgressView("Searching \(city)…") }
                     if restaurant == nil {
                         if !searching && places.isEmpty && error == nil {
-                            EmptyState(title: "Search \(city)", message: "Results come from Google Places when a key is set, otherwise OpenStreetMap. Nothing here is a made-up menu.")
+                            EmptyState(title: "Search \(city)", message: "Places come from Google, or OpenStreetMap if Google has no key.")
                         }
                         ForEach(places) { place in
                             Button {
@@ -191,7 +191,7 @@ struct DiscoverView: View {
                         Text("Drivers").font(.title3.weight(.bold))
                         Text("Fee: \(Fees.formula).").font(.caption).foregroundStyle(Theme.muted)
                         if ranked.isEmpty {
-                            EmptyState(title: "No trips from \(city)", message: "Drivers heading to College Station from this city will appear here.")
+                            EmptyState(title: "No trips from \(city)", message: "No one has posted a drive from here yet.")
                         }
                         ForEach(ranked, id: \.trip.id) { row in
                             VStack(alignment: .leading, spacing: 8) {

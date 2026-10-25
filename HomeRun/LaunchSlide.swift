@@ -22,7 +22,7 @@ struct LaunchSlide: View {
             let x = startX + (endX - startX) * progress
 
             ZStack {
-                Theme.artwork
+                Theme.artwork.overlay(PaperFiber())
                 Canvas { context, _ in
                     let rect = CGRect(x: plateX - plate / 2, y: plateY - plate / 2, width: plate, height: plate)
                     context.fill(HomePlateShape().path(in: rect), with: .color(.white))

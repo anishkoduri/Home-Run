@@ -8,6 +8,7 @@ struct HomeRunApp: App {
         WindowGroup {
             RootView()
                 .environment(model)
+                .environment(\.font, Theme.text())
                 .tint(Theme.maroon)
         }
     }
@@ -140,7 +141,7 @@ private struct OrderShell: View {
                         Image(systemName: "car.fill")
                         if !typeSize.isAccessibilitySize {
                             Text("Bring food")
-                                .font(.caption.weight(.bold))
+                                .font(Theme.text(.caption, weight: .bold))
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.7)
                         }
@@ -181,7 +182,7 @@ private struct OrderShell: View {
                 Image(systemName: symbol)
                 if !typeSize.isAccessibilitySize {
                     Text(title)
-                        .font(.caption.weight(.semibold))
+                        .font(Theme.text(.caption, weight: .semibold))
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                 }
@@ -214,7 +215,7 @@ private struct DriveShell: View {
                             Image(systemName: item.symbol)
                             if !typeSize.isAccessibilitySize {
                                 Text(item.rawValue)
-                                    .font(.caption.weight(.semibold))
+                                    .font(Theme.text(.caption, weight: .semibold))
                                     .lineLimit(1)
                                     .minimumScaleFactor(0.7)
                             }
@@ -232,7 +233,7 @@ private struct DriveShell: View {
                             Image(systemName: "bag.fill")
                             if !typeSize.isAccessibilitySize {
                                 Text("Order")
-                                    .font(.caption.weight(.heavy))
+                                    .font(Theme.text(.caption, weight: .bold))
                                     .lineLimit(1)
                                     .minimumScaleFactor(0.7)
                             }

@@ -26,22 +26,25 @@ struct AuthView: View {
                         Text("Home Run")
                             .font(.headline.weight(.bold))
                             .foregroundStyle(.white)
-                        Text(mode == .signIn ? "Welcome back" : "Join the trip")
-                            .font(.subheadline)
+                        Text(mode == .signIn ? "Sign in" : "Create an account")
+                            .font(Theme.text(.subheadline))
                             .foregroundStyle(.white.opacity(0.85))
                     }
                     Spacer()
                 }
                 .padding(20)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Theme.maroon)
+                .background {
+                    Theme.maroon.overlay(PaperFiber())
+                }
                 .padding(.horizontal, -24)
                 .padding(.top, -24)
 
-                Text("Your favorites.\nOn their way home.")
-                    .font(Theme.display(.largeTitle))
+                Text("Bring something home.")
+                    .font(Theme.display(.title2))
                     .foregroundStyle(Theme.ink)
-                Text("Students already driving to College Station can bring food or groceries, or you can bring some on your own drive.")
+                Text("Food runs to College Station.")
+                    .font(Theme.text(.subheadline))
                     .foregroundStyle(Theme.muted)
 
                 if mode == .signUp {

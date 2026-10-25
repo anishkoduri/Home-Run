@@ -16,7 +16,7 @@ struct HomePlateShape: Shape {
 }
 
 struct FoodPlate: View {
-    @ScaledMetric(relativeTo: .title3) private var side = 96
+    @ScaledMetric(relativeTo: .title3) private var side = 112
 
     var body: some View {
         Group {

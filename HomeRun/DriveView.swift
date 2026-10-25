@@ -60,7 +60,9 @@ struct DriveView: View {
                 }
                 .scrollContentBackground(.hidden)
             }
-            .background(Theme.road)
+            .background {
+                Theme.road.overlay(PaperFiber().opacity(0.45))
+            }
             .navigationTitle("On the road")
             .toolbarBackground(Theme.road, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)

@@ -7,7 +7,7 @@ enum Theme {
     /// Matches the brand artwork background so the launch slide has no visible box.
     static let artwork = Color(red: 80 / 255, green: 20 / 255, blue: 32 / 255)
     static let maroonDark = Color(red: 48 / 255, green: 0, blue: 0)
-    static let cream = Color(red: 247 / 255, green: 244 / 255, blue: 242 / 255)
+    static let cream = Color(red: 246 / 255, green: 241 / 255, blue: 234 / 255)
     static let surface = Color.white
     static let tint = Color(red: 245 / 255, green: 242 / 255, blue: 241 / 255)
     static let gold = Color(red: 184 / 255, green: 146 / 255, blue: 90 / 255)
@@ -24,8 +24,12 @@ enum Theme {
     static let radiusControl: CGFloat = 14
     static let space: CGFloat = 20
 
-    static func display(_ style: Font.TextStyle = .largeTitle) -> Font {
-        .system(style, design: .serif).weight(.bold)
+    static func display(_ style: Font.TextStyle = .title2) -> Font {
+        .system(style, design: .rounded).weight(.bold)
+    }
+
+    static func text(_ style: Font.TextStyle = .body, weight: Font.Weight = .regular) -> Font {
+        .system(style, design: .rounded).weight(weight)
     }
 }
 
@@ -40,6 +44,46 @@ enum Haptics {
 
     static func warning() {
         UINotificationFeedbackGenerator().notificationOccurred(.warning)
+    }
+}
+
+/// Low-contrast fiber behind maroon. Deterministic so it does not shimmer while scrolling.
+struct PaperFiber: View {
+    var body: some View {
+        Canvas { context, size in
+            var index = 0
+            let step: CGFloat = 14
+            var y: CGFloat = 2
+            while y < size.height {
+                var x: CGFloat = CGFloat((index * 5) % 11)
+                while x < size.width {
+                    let seed = Int(x) * 13 + Int(y) * 7
+                    let alpha = 0.035 + Double(seed % 5) * 0.008
+                    let rect = CGRect(x: x, y: y, width: 1.2, height: 1.2)
+                    context.fill(Path(ellipseIn: rect), with: .color(.white.opacity(alpha)))
+                    x += step
+                }
+                y += step
+                index += 1
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
+struct StitchMark: View {
+    var tint: Color = .white.opacity(0.55)
+
+    var body: some View {
+        HStack(spacing: 5) {
+            ForEach(0 ..< 7, id: \.self) { _ in
+                Capsule()
+                    .fill(tint)
+                    .frame(width: 9, height: 2)
+            }
+        }
+        .accessibilityHidden(true)
     }
 }
 
@@ -93,9 +137,16 @@ struct PrimaryButton: View {
             }
             .frame(maxWidth: .infinity, minHeight: 44)
             .padding(.vertical, 12)
+            .font(Theme.text(.body, weight: .semibold))
             .foregroundStyle(foreground)
-            .background(color)
-            .clipShape(RoundedRectangle(cornerRadius: Theme.radiusControl, style: .continuous))
+            .background {
+                RoundedRectangle(cornerRadius: Theme.radiusControl, style: .continuous)
+                    .fill(color)
+                    .overlay(alignment: .top) {
+                        Rectangle().fill(.white.opacity(0.22)).frame(height: 1)
+                    }
+                    .shadow(color: color.opacity(0.28), radius: 8, y: 3)
+            }
         }
         .buttonStyle(PressStyle())
         .disabled(busy)
