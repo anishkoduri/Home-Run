@@ -22,7 +22,8 @@ struct PlacePhoto: View {
             }
         }
         .frame(width: side, height: side)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .clipShape(InkCard())
+        .overlay(InkCard().stroke(Theme.ink.opacity(0.55), lineWidth: 1.2))
         .accessibilityLabel(place.photoName == nil ? "No photo for \(place.name)" : "Photo of \(place.name)")
         .task(id: place.photoName) { await load() }
     }
@@ -99,6 +100,9 @@ struct PickupCityButton: View {
                     Text(city)
                         .font(Theme.section(.title3))
                         .foregroundStyle(Theme.ink)
+                    Text("to College Station")
+                        .font(Theme.text(.caption, weight: .semibold))
+                        .foregroundStyle(Theme.maroon)
                 }
                 Spacer(minLength: 8)
                 Image(systemName: "chevron.down")

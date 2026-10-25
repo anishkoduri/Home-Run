@@ -781,8 +781,8 @@ struct RouteMap: View {
             }
         }
         .frame(height: 220)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.line))
+        .clipShape(InkCard())
+        .overlay(InkCard().stroke(Theme.ink.opacity(0.8), lineWidth: 1.6))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Map of the delivery route")
     }

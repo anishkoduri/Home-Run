@@ -244,7 +244,7 @@ private struct OrderShell: View {
                     VStack(spacing: 3) {
                         Image(systemName: "car.fill")
                         if !typeSize.isAccessibilitySize {
-                            Text("Bring food")
+                            Text("Running")
                                 .font(Theme.text(.caption, weight: .bold))
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.7)
@@ -256,22 +256,24 @@ private struct OrderShell: View {
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 8)
-                    .background(Theme.maroon)
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .background(InkCard().fill(Theme.maroon))
+                    .background(alignment: .topLeading) {
+                        InkCard().fill(Theme.maroonDark).offset(x: 2, y: 3)
+                    }
                 }
                 .buttonStyle(PressStyle())
                 .accessibilityIdentifier("bring-food")
-                .accessibilityLabel(model.driveBadge > 0 ? "Bring food, \(model.driveBadge) waiting" : "Bring food")
-                .accessibilityHint("Opens the driver side of Home Run")
+                .accessibilityLabel(model.driveBadge > 0 ? "Running, \(model.driveBadge) waiting" : "Running")
+                .accessibilityHint("Switches to the running workspace")
             }
             .padding(.horizontal, 10)
             .padding(.top, 8)
             .padding(.bottom, 6)
             .background {
-                Theme.surface.overlay(PaperFiber(tone: Theme.maroon))
+                Theme.cream.overlay(PaperFiber(tone: Theme.maroon, quiet: true))
                     .ignoresSafeArea(edges: .bottom)
             }
-            .overlay(alignment: .top) { Hairline() }
+            .overlay(alignment: .top) { Rectangle().fill(Theme.ink.opacity(0.75)).frame(height: 1.5) }
             .zIndex(1)
         }
         .homeRunPage(road: false)
@@ -313,8 +315,8 @@ private struct OrderShell: View {
             .padding(.vertical, 4)
             .background {
                 if tab == value {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Theme.maroon.opacity(0.1))
+                    InkCard()
+                        .fill(Theme.maroon.opacity(0.12))
                         .matchedGeometryEffect(id: "order-tab", in: tabSpace)
                 }
             }
@@ -353,13 +355,13 @@ private struct DriveShell: View {
                                     .minimumScaleFactor(0.7)
                             }
                         }
-                        .foregroundStyle(section == item ? Color.white : Theme.muted)
+                        .foregroundStyle(section == item ? Theme.maroon : Color.white.opacity(0.72))
                         .frame(maxWidth: .infinity, minHeight: 44)
                         .padding(.vertical, 6)
                         .background {
                             if section == item {
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .fill(Theme.maroon)
+                                InkCard()
+                                    .fill(Color.white)
                                     .matchedGeometryEffect(id: "drive-tab", in: tabSpace)
                             }
                         }
@@ -374,31 +376,32 @@ private struct DriveShell: View {
                         VStack(spacing: 4) {
                             Image(systemName: "bag.fill")
                             if !typeSize.isAccessibilitySize {
-                                Text("Get food")
+                                Text("Ordering")
                                     .font(Theme.text(.caption, weight: .bold))
                                     .lineLimit(1)
                                     .minimumScaleFactor(0.7)
                             }
                         }
-                        .foregroundStyle(.white)
+                        .foregroundStyle(Theme.maroon)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
-                        .background(Theme.maroon)
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .background(InkCard().fill(Theme.cream))
+                        .background(alignment: .topLeading) {
+                            InkCard().fill(Theme.maroonDark).offset(x: 2, y: 3)
+                        }
                     }
                     .buttonStyle(PressStyle())
                     .accessibilityIdentifier("get-food")
-                    .accessibilityLabel("Get food")
-                    .accessibilityHint("Opens the ordering side of Home Run")
+                    .accessibilityLabel("Ordering")
+                    .accessibilityHint("Switches to the ordering workspace")
             }
             .padding(.horizontal, 10)
             .padding(.top, 8)
             .padding(.bottom, 6)
             .background {
-                Theme.surface.overlay(PaperFiber(tone: Theme.maroon))
-                    .ignoresSafeArea(edges: .bottom)
+                Theme.maroon.ignoresSafeArea(edges: .bottom)
             }
-            .overlay(alignment: .top) { Hairline() }
+            .overlay(alignment: .top) { Rectangle().fill(Color.white.opacity(0.18)).frame(height: 1) }
             .zIndex(1)
         }
         .homeRunPage(road: false)

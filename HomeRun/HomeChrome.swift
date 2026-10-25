@@ -169,7 +169,7 @@ struct RouteSketch: View {
             }
             RouteDash()
                 .frame(maxWidth: .infinity)
-            Text("Posted cities only. The road route and fee appear after you choose a place. Home Run does not track the car.")
+            Text("Posted cities. Not a live route.")
                 .font(Theme.text(.footnote))
                 .foregroundStyle(Theme.muted)
                 .fixedSize(horizontal: false, vertical: true)
@@ -227,10 +227,11 @@ struct PageHeader: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
-                .font(Theme.brand(.title))
+                .font(Theme.brand(.largeTitle))
                 .foregroundStyle(Theme.ink)
                 .fixedSize(horizontal: false, vertical: true)
-            if let detail {
+                .accessibilityAddTraits(.isHeader)
+            if let detail, !detail.isEmpty {
                 Text(detail)
                     .font(Theme.text(.subheadline))
                     .foregroundStyle(Theme.muted)
@@ -271,7 +272,7 @@ struct ChoiceBar<Value: Hashable>: View {
                         .frame(maxWidth: .infinity, minHeight: 40)
                         .background {
                             if selection == option {
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                InkCard()
                                     .fill(Theme.maroon)
                                     .matchedGeometryEffect(id: "choice", in: space)
                             }
@@ -283,7 +284,10 @@ struct ChoiceBar<Value: Hashable>: View {
         }
         .padding(4)
         .background(Theme.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.line))
+        .clipShape(InkCard())
+        .overlay(InkCard().stroke(Theme.ink.opacity(0.8), lineWidth: 1.5))
+        .background(alignment: .topLeading) {
+            InkCard().fill(Theme.maroon.opacity(0.85)).offset(x: 2, y: 3)
+        }
     }
 }

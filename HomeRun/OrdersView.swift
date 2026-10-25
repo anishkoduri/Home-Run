@@ -17,7 +17,7 @@ struct OrdersView: View {
     var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 12) {
-                PageHeader(title: "Orders", detail: laneDetail)
+                PageHeader(title: "Orders")
                 ChoiceBar(options: Lane.allCases, label: { $0.rawValue }, selection: $lane)
                     .padding(.horizontal, 20)
                 if let error { ErrorBanner(message: error).padding(.horizontal, 20) }
@@ -82,14 +82,6 @@ struct OrdersView: View {
         orders.filter { lane == .past ? $0.status.isTerminal : !$0.status.isTerminal }
     }
 
-    private var laneDetail: String {
-        switch lane {
-        case .active: return "Requests and deliveries still moving."
-        case .past: return "Completed, declined, cancelled, and resolved."
-        case .faves: return "The same saved restaurants and stores as your bookmarks."
-        }
-    }
-
     private var emptyTitle: String { lane == .past ? "No past orders." : "No active orders." }
     private var emptyMessage: String { lane == .past ? "Finished orders show up here." : "Request a pickup from Home." }
 
@@ -146,9 +138,6 @@ struct FavoritePlaceView: View {
                 Text(place.name).font(Theme.section(.title2))
                 Text(place.address).font(Theme.text(.body)).foregroundStyle(Theme.muted)
                 Text(place.city).font(Theme.text(.subheadline, weight: .semibold))
-                Text("Saved on this phone. The same bookmark as My Faves.")
-                    .font(Theme.text(.caption))
-                    .foregroundStyle(Theme.muted)
                 Button("Request a pickup") {
                     model.stagedFavorite = place
                     model.requestedCustomerTab = "discover"
@@ -156,8 +145,7 @@ struct FavoritePlaceView: View {
                 .font(Theme.text(.headline, weight: .semibold))
                 .frame(maxWidth: .infinity, minHeight: 48)
                 .foregroundStyle(.white)
-                .background(Theme.maroon)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .background(InkCard().fill(Theme.maroon))
             }
             Spacer()
         }

@@ -65,7 +65,7 @@ struct DiscoverView: View {
         ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     if !embedded {
-                        PageHeader(title: "Discover", detail: "Find a place. A trip is not required to post.")
+                        PageHeader(title: "Discover")
                             .padding(.horizontal, -20)
                     }
                     VStack(alignment: .leading, spacing: 8) {
@@ -81,7 +81,8 @@ struct DiscoverView: View {
                                     .foregroundStyle(Theme.maroon)
                                     .frame(maxWidth: .infinity, minHeight: 44)
                                     .background(Theme.surface)
-                                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Theme.maroon, lineWidth: 1.2))
+                                    .clipShape(InkCard())
+                                    .overlay(InkCard().stroke(Theme.maroon, lineWidth: 1.6))
                             }
                             .buttonStyle(PressStyle())
                             .accessibilityIdentifier("home-or-personal")
@@ -94,14 +95,12 @@ struct DiscoverView: View {
                                     .foregroundStyle(Theme.maroon)
                                     .frame(maxWidth: .infinity, minHeight: 44)
                                     .background(Theme.surface)
-                                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Theme.maroon, lineWidth: 1.2))
+                                    .clipShape(InkCard())
+                                    .overlay(InkCard().stroke(Theme.maroon, lineWidth: 1.6))
                             }
                             .buttonStyle(PressStyle())
                             .accessibilityIdentifier("home-or-personal")
                         }
-                        Text("Delivering to College Station.")
-                            .font(Theme.text(.caption))
-                            .foregroundStyle(Theme.muted)
                         ChoiceBar(
                             options: ["all", "food", "groceries", "stores"],
                             label: { option in
@@ -157,7 +156,7 @@ struct DiscoverView: View {
                     }
                     if let error { ErrorBanner(message: error) }
                     if !promoted.isEmpty && search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !personalBrowse {
-                        Text("Recommended is an editorial selection for this metro. It is not a popularity rank, a sponsored placement, or a Google rating.")
+                        Text("Editorial picks. Not a Google ranking.")
                             .font(Theme.text(.caption))
                             .foregroundStyle(Theme.muted)
                     }
@@ -295,8 +294,7 @@ struct DiscoverView: View {
                                     .font(Theme.text(.body, weight: .bold))
                                     .foregroundStyle(.white)
                                     .frame(maxWidth: .infinity, minHeight: 48)
-                                    .background(Theme.maroon)
-                                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    .background(InkCard().fill(Theme.maroon))
                             }
                             .buttonStyle(PressStyle())
                             .accessibilityIdentifier("continue-order")

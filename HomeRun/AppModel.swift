@@ -45,6 +45,15 @@ final class AppModel {
         UserDefaults.standard.set("manual", forKey: "homerun.runnerAreaSource")
     }
 
+    func clearRunnerArea() {
+        runnerArea = ""
+        runnerAreaSource = ""
+        runnerLat = nil
+        runnerLng = nil
+        UserDefaults.standard.removeObject(forKey: "homerun.runnerArea")
+        UserDefaults.standard.removeObject(forKey: "homerun.runnerAreaSource")
+    }
+
     func setDeviceArea(lat: Double, lng: Double, label: String) {
         runnerArea = label
         runnerAreaSource = "device"

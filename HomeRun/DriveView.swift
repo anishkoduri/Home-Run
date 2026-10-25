@@ -45,32 +45,46 @@ struct DriveView: View {
 
     var body: some View {
         NavigationStack(path: $path) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    HStack(alignment: .firstTextBaseline) {
-                        Text(section.rawValue).font(Theme.brand(.title)).foregroundStyle(Theme.ink)
-                        Spacer(minLength: 8)
-                        NavigationLink {
-                            InboxView()
-                        } label: {
-                            ZStack(alignment: .topTrailing) {
-                                Image(systemName: "bell")
-                                    .frame(width: 44, height: 44)
-                                if model.noticeBadge > 0 {
-                                    Text("\(model.noticeBadge)")
-                                        .font(Theme.text(.caption2, weight: .bold))
-                                        .foregroundStyle(.white)
-                                        .padding(4)
-                                        .background(Theme.maroon)
-                                        .clipShape(Capsule())
-                                }
+            VStack(spacing: 0) {
+                HStack(alignment: .center, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Running")
+                            .font(Theme.text(.caption, weight: .bold))
+                            .foregroundStyle(Theme.cream.opacity(0.8))
+                        Text(section.rawValue)
+                            .font(Theme.brand(.title))
+                            .foregroundStyle(.white)
+                    }
+                    Spacer(minLength: 8)
+                    NavigationLink {
+                        InboxView()
+                    } label: {
+                        ZStack(alignment: .topTrailing) {
+                            Image(systemName: "bell")
+                                .foregroundStyle(.white)
+                                .frame(width: 44, height: 44)
+                            if model.noticeBadge > 0 {
+                                Text("\(model.noticeBadge)")
+                                    .font(Theme.text(.caption2, weight: .bold))
+                                    .foregroundStyle(Theme.maroon)
+                                    .padding(4)
+                                    .background(Theme.cream)
+                                    .clipShape(Capsule())
                             }
                         }
-                        .accessibilityLabel(model.noticeBadge > 0 ? "Notifications, \(model.noticeBadge) unread" : "Notifications")
-                        NavigationLink("Post a trip") { PostTripView() }
-                            .font(Theme.text(.subheadline, weight: .semibold))
-                            .frame(minHeight: 44)
                     }
+                    .accessibilityLabel(model.noticeBadge > 0 ? "Notifications, \(model.noticeBadge) unread" : "Notifications")
+                    NavigationLink("Post a trip") { PostTripView() }
+                        .font(Theme.text(.subheadline, weight: .semibold))
+                        .foregroundStyle(Theme.cream)
+                        .frame(minHeight: 44)
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
+                .padding(.bottom, 14)
+                .background(Theme.maroon.ignoresSafeArea(edges: .top))
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
                     if let error { ErrorBanner(message: error) }
                     switch section {
                     case .requests:
@@ -130,12 +144,13 @@ struct DriveView: View {
                 .padding(20)
                 .animation(reduceMotion ? nil : .spring(duration: 0.32, bounce: 0.12), value: section)
             }
+            }
             .homeRunPage(road: false)
             .background(Theme.cream.ignoresSafeArea())
             .toolbar(.hidden, for: .navigationBar)
-            .toolbarBackground(Theme.cream, for: .navigationBar)
+            .toolbarBackground(Theme.maroon, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
-            .toolbarColorScheme(.light, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
             .navigationDestination(for: String.self) { OrderDetailView(id: $0, forRunner: true) }
             .refreshable { await load() }
             .sheet(item: $declining) { order in
@@ -453,9 +468,9 @@ struct DriveView: View {
                 .font(Theme.text(.caption, weight: .semibold))
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
-                .background(selected ? Theme.maroon : Theme.surface)
+                .background(InkCard().fill(selected ? Theme.maroon : Theme.surface))
                 .foregroundStyle(selected ? Color.white : Theme.ink)
-                .clipShape(Capsule())
+                .overlay(InkCard().stroke(Theme.ink.opacity(selected ? 0 : 0.7), lineWidth: 1.2))
         }
         .buttonStyle(.plain)
     }
@@ -481,20 +496,17 @@ struct DriveView: View {
             }
             .pickerStyle(.segmented)
             .accessibilityIdentifier("request-sort")
-            if model.runnerOrigin == nil {
-                Text("Choose a starting area to sort by distance. This does not use a pretend GPS point.")
-                    .font(Theme.text(.caption)).foregroundStyle(Theme.muted)
-            } else if model.runnerAreaSource == "manual" {
-                Text("Manual area: \(model.runnerArea). Distances are approximate geographic distance, not a driving route.")
-                    .font(Theme.text(.caption)).foregroundStyle(Theme.muted)
-            } else {
-                Text("Device location. Closest uses approximate geographic distance unless a road route is calculated when you claim.")
+            if let origin = model.runnerOrigin {
+                Text(model.runnerAreaSource == "manual"
+                     ? "From \(origin.label) · straight-line, not a driving route."
+                     : "From your location · straight-line until a road quote.")
                     .font(Theme.text(.caption)).foregroundStyle(Theme.muted)
             }
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack {
                     areaChip("All", selected: areaFilter.isEmpty) {
                         areaFilter = ""
+                        model.clearRunnerArea()
                         Task { await load() }
                     }
                     .accessibilityIdentifier("area-All")
@@ -544,9 +556,10 @@ struct DriveView: View {
                         Text(Fees.money(Double(preview.shareCents) / 100))
                             .font(Theme.price(.headline))
                             .foregroundStyle(Theme.maroon)
-                        Text("Est.")
+                        Text(model.runnerOrigin.map { "From \($0.label)" } ?? "Local est.")
                             .font(Theme.text(.caption2, weight: .semibold))
                             .foregroundStyle(Theme.muted)
+                            .multilineTextAlignment(.trailing)
                         if order.customerId == model.user?.id {
                             Text("You posted this.")
                                 .font(Theme.text(.caption2))
@@ -559,8 +572,8 @@ struct DriveView: View {
                         }
                     }
                 }
-                .padding(.vertical, 10)
-                Divider()
+                .padding(12)
+                .ticketPanel()
             }
         }
     }

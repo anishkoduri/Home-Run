@@ -19,6 +19,8 @@ struct HomeView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     hero
                     pickupBar
+                        .padding(.top, -26)
+                        .zIndex(1)
                     VStack(alignment: .leading, spacing: 28) {
                         if let error { ErrorBanner(message: error) }
                         CoverageMap(trips: trips)
@@ -90,9 +92,6 @@ struct HomeView: View {
             .background(Theme.maroon)
 
             VStack(alignment: .leading, spacing: 10) {
-                Text("Supply drops for Aggies from Aggies.")
-                    .font(Theme.text(.subheadline))
-                    .foregroundStyle(.white.opacity(0.9))
                 photoBand
             }
             .padding(.horizontal, 20)
@@ -119,9 +118,9 @@ struct HomeView: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .frame(height: typeSize.isAccessibilitySize ? 72 : 88)
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(.white.opacity(0.7), lineWidth: 1))
+        .frame(height: typeSize.isAccessibilitySize ? 96 : 132)
+        .clipShape(InkCard())
+        .overlay(InkCard().stroke(.white.opacity(0.85), lineWidth: 1.6))
         .accessibilityHidden(true)
     }
 
@@ -130,8 +129,7 @@ struct HomeView: View {
             .font(Theme.text(.body, weight: .bold))
             .foregroundStyle(.white)
             .frame(width: 48, height: 48)
-            .background(Theme.maroon)
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .background(InkCard().fill(Theme.maroon))
     }
 
     private var personalEntryLabel: some View {
@@ -140,7 +138,8 @@ struct HomeView: View {
             .foregroundStyle(Theme.maroon)
             .frame(maxWidth: .infinity, minHeight: 44)
             .background(Theme.surface)
-            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Theme.maroon, lineWidth: 1.2))
+            .clipShape(InkCard())
+            .overlay(InkCard().stroke(Theme.maroon, lineWidth: 1.6))
     }
 
     private var pickupTitle: some View {
@@ -159,9 +158,6 @@ struct HomeView: View {
                     model.cityPickerOpen = true
                 }
             }
-            Text("Delivering to College Station.")
-                .font(Theme.text(.caption))
-                .foregroundStyle(Theme.muted)
             HStack(spacing: 8) {
                 EntryField("Restaurant or store", text: $query, prompt: Text("Restaurant or store").foregroundStyle(Theme.muted))
                     .focused($searchFocused)
@@ -284,11 +280,8 @@ struct HomeView: View {
             Text("No trips yet.")
                 .font(Theme.section(.headline))
                 .foregroundStyle(Theme.ink)
-            Text("Driving back? Post a trip.")
-                .font(Theme.text(.subheadline))
-                .foregroundStyle(Theme.muted)
             if model.profile?.use != .order {
-                Button("Bring food") { model.side = .driving }
+                Button("Running") { model.side = .driving }
                     .font(Theme.text(.body, weight: .semibold))
                     .frame(minHeight: 44)
             }
@@ -401,8 +394,7 @@ private struct TripRouteDetail: View {
                     .font(Theme.text(.headline, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity, minHeight: 48)
-                    .background(Theme.maroon)
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.radiusControl, style: .continuous))
+                    .background(InkCard().fill(Theme.maroon))
             }
             .buttonStyle(PressStyle())
             .disabled((trip.activeOrders ?? 0) >= trip.maxOrders)

@@ -46,16 +46,6 @@ struct AuthView: View {
                 .padding(.horizontal, -24)
                 .padding(.top, -24)
 
-                Text("Bring something home.")
-                    .font(Theme.section(.title2))
-                    .foregroundStyle(Theme.ink)
-                Text("Supply drops for Aggies from Aggies.")
-                    .font(Theme.text(.subheadline))
-                    .foregroundStyle(Theme.muted)
-                Text("No real charges.")
-                    .font(Theme.text(.caption))
-                    .foregroundStyle(Theme.muted)
-
                 if mode == .signUp {
                     field("Your name", text: $name)
                     Text("What do you want to do?").font(Theme.text(.footnote, weight: .semibold)).foregroundStyle(Theme.muted)

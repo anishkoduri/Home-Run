@@ -7,14 +7,14 @@ struct CoverageMap: View {
 
     private var region: MKCoordinateRegion {
         MKCoordinateRegion(
-            center: CLLocationCoordinate2D(latitude: 31.4, longitude: -99.2),
-            span: MKCoordinateSpan(latitudeDelta: 9.2, longitudeDelta: 13.5)
+            center: CLLocationCoordinate2D(latitude: 31.05, longitude: -97.15),
+            span: MKCoordinateSpan(latitudeDelta: 5.4, longitudeDelta: 6.2)
         )
     }
 
     /// Major cities on the coverage map. Smaller origins stay in the city picker.
     private var majorCities: [City] {
-        ["Houston", "Dallas", "Austin", "San Antonio", "Fort Worth", "Waco", "College Station", "El Paso"].compactMap { Places.city(named: $0) }
+        ["Houston", "Dallas", "Austin", "San Antonio", "Fort Worth", "Waco", "College Station"].compactMap { Places.city(named: $0) }
     }
 
     private var posted: [Trip] {
@@ -40,11 +40,6 @@ struct CoverageMap: View {
             Text("Where we cover")
                 .font(Theme.section())
                 .foregroundStyle(Theme.ink)
-            Text(posted.isEmpty
-                 ? "Houston, Dallas, Austin, San Antonio, and the other pins are cities we cover. College Station is home. Runners show up when a trip is posted."
-                 : "City pins are where we cover. Runners mark posted trips heading to College Station.")
-                .font(Theme.text(.caption))
-                .foregroundStyle(Theme.muted)
             Map(position: .constant(.region(region))) {
                 ForEach(majorCities) { city in
                     Marker(city.name, systemImage: city.name == "College Station" ? "house.fill" : "mappin", coordinate: CLLocationCoordinate2D(latitude: city.lat, longitude: city.lng))
@@ -62,8 +57,11 @@ struct CoverageMap: View {
             }
             .mapStyle(.standard(elevation: .flat))
             .frame(height: 280)
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.line))
+            .clipShape(InkCard())
+            .overlay(InkCard().stroke(Theme.ink.opacity(0.8), lineWidth: 1.6))
+            .background(alignment: .topLeading) {
+                InkCard().fill(Theme.maroon.opacity(0.88)).offset(x: 3, y: 4)
+            }
             .accessibilityElement(children: .ignore)
             .accessibilityIdentifier("coverage-map")
             .accessibilityLabel("Map of Texas cities Home Run covers and runners with posted trips")
@@ -106,12 +104,15 @@ struct DriverTrackMap: View {
                 .mapStyle(.standard(elevation: .flat))
             }
             .frame(height: 280)
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.line))
+            .clipShape(InkCard())
+            .overlay(InkCard().stroke(Theme.ink.opacity(0.8), lineWidth: 1.6))
+            .background(alignment: .topLeading) {
+                InkCard().fill(Theme.maroon.opacity(0.88)).offset(x: 3, y: 4)
+            }
             .accessibilityElement(children: .ignore)
             .accessibilityIdentifier("driver-track")
             .accessibilityLabel("Simulated map of your runner between the pickup and the drop-off")
-            Text("Following your runner on this delivery. This phone is not sending GPS.")
+            Text("Simulated. This phone is not sending GPS.")
                 .font(Theme.text(.caption))
                 .foregroundStyle(Theme.muted)
         }

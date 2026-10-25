@@ -92,11 +92,13 @@ enum Haptics {
 /// Low-contrast fiber behind maroon. Deterministic so it does not shimmer while scrolling.
 struct PaperFiber: View {
     var tone: Color = Theme.maroon
+    /// Content pages use a light tooth. Brand moments can pass `quiet: false`.
+    var quiet = false
 
     var body: some View {
         Canvas { context, size in
             let area = size.width * size.height
-            let count = min(520, max(80, Int(area / 1400)))
+            let count = quiet ? min(90, max(24, Int(area / 9000))) : min(280, max(60, Int(area / 2200)))
             for index in 0 ..< count {
                 var state = UInt32(index) &* 1_103_515_245 &+ 12_345
                 func unit() -> CGFloat {
@@ -105,13 +107,13 @@ struct PaperFiber: View {
                 }
                 let x = unit() * size.width
                 let y = unit() * size.height
-                let length: CGFloat = index % 11 == 0 ? 14 + unit() * 18 : 2.5 + unit() * 6
+                let length: CGFloat = quiet ? 3 + unit() * 7 : (index % 11 == 0 ? 12 + unit() * 10 : 2.5 + unit() * 5)
                 let angle = unit() * .pi
                 var path = Path()
                 path.move(to: CGPoint(x: x, y: y))
                 path.addLine(to: CGPoint(x: x + cos(angle) * length, y: y + sin(angle) * length))
-                let alpha = 0.045 + Double(unit()) * 0.07
-                context.stroke(path, with: .color(tone.opacity(alpha)), lineWidth: index % 11 == 0 ? 0.8 : 0.55)
+                let alpha = quiet ? 0.03 + Double(unit()) * 0.04 : 0.05 + Double(unit()) * 0.06
+                context.stroke(path, with: .color(tone.opacity(alpha)), lineWidth: quiet ? 0.45 : 0.7)
             }
         }
         .allowsHitTesting(false)
@@ -139,9 +141,12 @@ struct PressStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(!reduceMotion && configuration.isPressed ? 0.98 : 1)
-            .opacity(configuration.isPressed ? 0.88 : 1)
-            .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: configuration.isPressed)
+            .offset(
+                x: !reduceMotion && configuration.isPressed ? 2 : 0,
+                y: !reduceMotion && configuration.isPressed ? 3 : 0
+            )
+            .opacity(configuration.isPressed ? 0.9 : 1)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
 
@@ -162,10 +167,7 @@ struct Card<Content: View>: View {
         content
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Theme.surface)
-            .clipShape(RoundedRectangle(cornerRadius: Theme.radiusCard, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: Theme.radiusCard, style: .continuous).stroke(Theme.line))
-            .shadow(color: Theme.ink.opacity(0.05), radius: 12, y: 6)
+            .sketchPanel()
     }
 }
 
@@ -186,17 +188,27 @@ struct PrimaryButton: View {
             .padding(.vertical, 12)
             .font(Theme.text(.body, weight: .semibold))
             .foregroundStyle(foreground)
-            .background {
-                RoundedRectangle(cornerRadius: Theme.radiusControl, style: .continuous)
-                    .fill(color)
-                    .overlay(alignment: .top) {
-                        Rectangle().fill(.white.opacity(0.22)).frame(height: 1)
-                    }
-                    .shadow(color: color.opacity(0.28), radius: 8, y: 3)
-            }
         }
-        .buttonStyle(PressStyle())
+        .buttonStyle(StampButtonStyle(color: color))
         .disabled(busy)
+    }
+}
+
+/// Press slides the ink onto its offset shadow. The shadow stays put.
+struct StampButtonStyle: ButtonStyle {
+    var color: Color
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        let pressed = configuration.isPressed && !reduceMotion
+        configuration.label
+            .background(InkCard().fill(color))
+            .offset(x: pressed ? 3 : 0, y: pressed ? 4 : 0)
+            .background(alignment: .topLeading) {
+                InkCard().fill(Theme.maroonDark).offset(x: 3, y: 4)
+            }
+            .opacity(configuration.isPressed ? 0.92 : 1)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
 
@@ -216,6 +228,8 @@ struct ErrorBanner: View {
 struct StatusPill: View {
     var status: OrderStatus
     var title: String? = nil
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         Text(title ?? status.label)
             .font(Theme.text(.caption, weight: .bold))
@@ -223,7 +237,10 @@ struct StatusPill: View {
             .padding(.vertical, 5)
             .foregroundStyle(foreground)
             .background(background)
-            .clipShape(Capsule())
+            .clipShape(InkCard())
+            .overlay(InkCard().stroke(foreground.opacity(0.55), style: StrokeStyle(lineWidth: 1.2, dash: [3, 2])))
+            .rotationEffect(.degrees(reduceMotion ? 0 : -2))
+            .accessibilityLabel(title ?? status.label)
     }
 
     private var foreground: Color {
@@ -306,9 +323,9 @@ struct HomeRunPage: ViewModifier {
             .background {
                 Group {
                     if useRoad {
-                        Theme.road.overlay(PaperFiber(tone: .white))
+                        Theme.road.overlay(PaperFiber(tone: .white, quiet: true))
                     } else {
-                        Theme.cream.overlay(PaperFiber(tone: Theme.maroon))
+                        Theme.cream.overlay(PaperFiber(tone: Theme.maroon, quiet: true))
                     }
                 }
                 .ignoresSafeArea()
@@ -318,14 +335,18 @@ struct HomeRunPage: ViewModifier {
 
 struct SketchBackdrop: ViewModifier {
     var fill: Color = Theme.surface
-    var ink: Color = Theme.line
+    var ink: Color = Theme.ink.opacity(0.82)
 
     func body(content: Content) -> some View {
         content
             .background(fill)
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(ink, lineWidth: 1))
-            .shadow(color: Theme.ink.opacity(0.04), radius: 8, y: 3)
+            .clipShape(InkCard())
+            .overlay(InkCard().stroke(ink, lineWidth: 1.6))
+            .background(alignment: .topLeading) {
+                InkCard()
+                    .fill(Theme.maroon.opacity(0.88))
+                    .offset(x: 3, y: 4)
+            }
     }
 }
 
@@ -335,12 +356,28 @@ struct TicketBackdrop: ViewModifier {
     func body(content: Content) -> some View {
         content
             .background(Theme.surface)
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .clipShape(InkCard())
             .overlay(alignment: .leading) {
-                Rectangle().fill(Theme.maroon).frame(width: 4)
+                VStack(spacing: 7) {
+                    ForEach(0 ..< 7, id: \.self) { _ in
+                        Circle().fill(Theme.cream).frame(width: 5, height: 5)
+                    }
+                }
+                .padding(.vertical, 10)
+                .frame(maxHeight: .infinity)
+                .padding(.leading, 7)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
             }
-            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Theme.line, lineWidth: 1))
-            .shadow(color: Theme.ink.opacity(open ? 0.12 : 0.05), radius: open ? 14 : 8, y: open ? 6 : 3)
+            .overlay(alignment: .leading) {
+                Rectangle().fill(Theme.maroon).frame(width: 3)
+            }
+            .overlay(InkCard().stroke(Theme.ink.opacity(open ? 0.9 : 0.75), lineWidth: open ? 2 : 1.5))
+            .background(alignment: .topLeading) {
+                InkCard()
+                    .fill(Theme.maroon.opacity(open ? 0.95 : 0.72))
+                    .offset(x: 3, y: 4)
+            }
     }
 }
 
