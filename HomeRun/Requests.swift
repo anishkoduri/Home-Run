@@ -53,6 +53,57 @@ struct NewOrderBody: Encodable {
     var pickupReference: String?
     var lines: [OrderLine]?
     var operationKey: String? = nil
+    var requestText: String? = nil
+    var merchandiseCents: Int? = nil
+    var substitution: String? = nil
+    var personalItem: Bool? = nil
+    var screenshotBase64: String? = nil
+    var pickupKind: String? = nil
+    var contactLabel: String? = nil
+    var accessInstructions: String? = nil
+    var pickupWindow: String? = nil
+    var itemQuantity: String? = nil
+    var fragile: Bool? = nil
+    var alreadyOrdered: Bool? = nil
+    var pickupName: String? = nil
+    var restaurantOrderNumber: String? = nil
+    var referenceMissing: Bool? = nil
+    var pickupReadyAt: String? = nil
+    var pickupCode: String? = nil
+    var pickupInstructions: String? = nil
+    var readyConfirmed: Bool? = nil
+}
+
+struct HandoffSubmit: Encodable {
+    var handoffSubmit: Bool = true
+    var requestText: String
+    var pickupName: String?
+    var restaurantOrderNumber: String?
+    var referenceMissing: Bool?
+    var pickupWindow: String?
+    var pickupReadyAt: String?
+    var pickupCode: String?
+    var pickupInstructions: String?
+    var readyConfirmed: Bool?
+    var contactLabel: String?
+    var accessInstructions: String?
+    var screenshotBase64: String?
+    var removeScreenshot: Bool?
+    var branchNote: String?
+}
+
+struct DetailsDecision: Encodable { var detailsDecision: String }
+struct WindowDecision: Encodable { var windowDecision: String }
+struct PlaceDecision: Encodable { var placeDecision: String }
+struct CollectionPatch: Encodable { var status: String; var collectionConfirmed: Bool }
+
+struct PurchasePatch: Encodable {
+    var purchaseActualCents: Int
+    var purchaseReference: String?
+}
+
+struct RevisionDecision: Encodable {
+    var revisionDecision: String
 }
 
 struct DeliveryPatch: Encodable {

@@ -215,8 +215,9 @@ struct ErrorBanner: View {
 
 struct StatusPill: View {
     var status: OrderStatus
+    var title: String? = nil
     var body: some View {
-        Text(status.label)
+        Text(title ?? status.label)
             .font(Theme.text(.caption, weight: .bold))
             .padding(.horizontal, 10)
             .padding(.vertical, 5)

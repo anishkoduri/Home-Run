@@ -4,6 +4,8 @@ Priority correction: restore the missing pickup-city selector, working restauran
 
 Continue the EXISTING native iOS app at https://github.com/anishkoduri/Home-Run. Implement a complete, connected demonstration of its student-to-student intercity pickup marketplace. This is ONE complete prompt. No second part is coming. These instructions supersede conflicts in earlier master prompts, particularly live payments, production deployment, web-stack assumptions, and waiting for Part 2.
 
+Ordering model in the app: a request is Restaurant or store, or Home or personal item. The customer pays the merchant. Home Run simulates the delivery fee only. Pickup details stay on the shared order. After acceptance the customer adds confirmation and the runner reviews it before pickup. Paragraphs below that say the customer always pays separately, or that the runner purchases and is reimbursed, are superseded by this paragraph. Older stored runner-purchase records keep their merchandise ledger and are labeled as such.
+
 ## 1. Mission, boundaries, execution
 
 Home Run connects College Station customers with students already driving back from other cities who can bring food, groceries, packaged goods, and forgotten belongings. Optimize existing journeys, not instant courier dispatch. Availability and earnings are never guaranteed.

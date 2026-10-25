@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 
 struct Handoff: Equatable {
@@ -283,8 +284,14 @@ struct DiscoverView: View {
                                     if estimate.source == "straight_line" {
                                         Text("Approximate distance. A driving route wasn't available.").font(Theme.text(.caption)).foregroundStyle(Theme.muted)
                                     }
-                                    Button("Request delivery") {
-                                        request = RequestDraft(trip: row.trip, estimate: estimate, place: restaurant.place, source: restaurant.source, handoff: handoff)
+                                    Button("Restaurant or store") {
+                                        request = RequestDraft(trip: row.trip, estimate: estimate, place: restaurant.place, source: restaurant.source, handoff: handoff, kind: "merchant")
+                                    }
+                                    .font(Theme.text(.headline, weight: .semibold))
+                                    .frame(minHeight: 44)
+                                    .disabled((row.trip.activeOrders ?? 0) >= row.trip.maxOrders)
+                                    Button("Home or personal item") {
+                                        request = RequestDraft(trip: row.trip, estimate: estimate, place: Self.sampleHouse(near: row.trip), source: "sample", handoff: handoff, kind: "personal")
                                     }
                                     .font(Theme.text(.headline, weight: .semibold))
                                     .frame(minHeight: 44)
@@ -525,13 +532,46 @@ struct DiscoverView: View {
     }
 }
 
+extension DiscoverView {
+    fileprivate static func sampleHouse(near trip: Trip) -> Place {
+        Place(
+            placeId: "sample:house-\(trip.originCity)",
+            name: "Sample house — not a real address",
+            address: "Fictional point near \(trip.originCity). Not a geocoded home.",
+            lat: trip.originLat + 0.008,
+            lng: trip.originLng + 0.008,
+            rating: nil,
+            ratingCount: nil,
+            website: nil,
+            mapsUrl: nil,
+            photoName: nil,
+            photoCredit: nil,
+            contentSource: "sample"
+        )
+    }
+}
+
 struct RequestDraft: Identifiable {
     var trip: Trip
     var estimate: DetourEstimate
     var place: Place
     var source: String
     var handoff: Handoff
-    var id: String { trip.id }
+    var kind: String = "merchant"
+    var id: String { trip.id + kind }
+}
+
+private struct DraftBody: Encodable {
+    var tripId: String
+    var placeId: String
+    var requestText: String
+    var merchandise: String
+    var substitution: String
+    var instructions: String
+    var personal: Bool
+    var bulky: Bool
+    var screenshotBase64: String?
+    var removeScreenshot: Bool
 }
 
 struct RequestSheet: View {
@@ -540,14 +580,39 @@ struct RequestSheet: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var draft: RequestDraft
     var onDone: () -> Void
-    @State private var note = ""
-    @State private var lines: [ItemDraft] = [ItemDraft()]
+    @State private var requestText = ""
+    @State private var merchandise = ""
+    @State private var substitution = "ask"
+    @State private var instructions = ""
     @State private var personal = false
-    @State private var reference = ""
+    @State private var alreadyOrdered = false
+    @State private var contact = ""
+    @State private var access = ""
+    @State private var quantity = ""
+    @State private var windowChoice = "30 minutes before departure"
+    @State private var orderName = ""
+    @State private var orderNumber = ""
+    @State private var referenceMissing = false
+    @State private var pickupCode = ""
+    @State private var weightText = ""
+    @State private var fragile = false
+    @State private var bulky = false
+    @State private var heavy = false
+    @State private var photoItem: PhotosPickerItem?
+    @State private var screenshot: UIImage?
+    @State private var showScreenshot = false
+    @State private var loadedTrip = ""
     @State private var operationKey = UUID().uuidString
     @State private var busy = false
     @State private var error: String?
     @State private var confirmed: Order?
+    @State private var submitted = false
+
+    init(draft: RequestDraft, onDone: @escaping () -> Void) {
+        self.draft = draft
+        self.onDone = onDone
+        _personal = State(initialValue: draft.kind == "personal")
+    }
 
     var body: some View {
         NavigationStack {
@@ -558,46 +623,79 @@ struct RequestSheet: View {
                             .font(Theme.brand(.title))
                             .foregroundStyle(Theme.maroon)
                         Text(confirmed.restaurantName).font(Theme.section())
-                        StatusPill(status: confirmed.status)
-                        Text("This is the status Home Run saved. The driver has not accepted it yet, and no payment was taken.")
+                        StatusPill(status: confirmed.status, title: confirmed.progressTitle)
+                        Text(confirmed.itemSummary ?? "Pickup details saved.")
+                            .font(Theme.text(.subheadline))
+                        Text(confirmed.isPersonalPickup ? "Home pickup. No store payment is part of this request." : "Wait for your runner to accept before ordering, unless you already ordered. The delivery fee is simulated.")
                             .font(Theme.text(.subheadline))
                             .foregroundStyle(Theme.muted)
                             .fixedSize(horizontal: false, vertical: true)
+                        if let fee = confirmed.quoteCents {
+                            Text("Delivery fee \(Fees.money(Double(fee) / 100))").font(Theme.price())
+                        }
                         PrimaryButton(title: "Done") { onDone(); dismiss() }
                     } else {
-                        Text("Ask \(Format.firstName(draft.trip.driver?.displayName)) to grab \(draft.place.name)")
+                        Text(personal ? "Home or personal item" : "Restaurant or store")
                             .font(Theme.brand(.title2)).foregroundStyle(Theme.maroon)
-                        CityRoute(origin: draft.trip.originCity, destination: draft.trip.destinationCity)
-                        Text("Leaves \(Format.relative(draft.trip.departureAt))").foregroundStyle(Theme.muted)
-                        Text("Handoff at \(draft.handoff.label)").foregroundStyle(Theme.muted)
-                        Text("Added drive \(Format.minutes(draft.estimate.detourMinutes))")
-                        Toggle(personal ? "Personal item pickup" : "I order and pay the store separately", isOn: $personal)
-                        ForEach($lines) { $line in
-                            VStack(alignment: .leading, spacing: 8) {
-                                TextField("What should they pick up?", text: $line.name).padding(12).sketchPanel()
-                                Stepper("Quantity \(line.quantity)", value: $line.quantity, in: 1...12)
-                                TextField("Weight each, pounds. Leave blank if unknown.", text: $line.weight)
-                                    .keyboardType(.decimalPad)
-                                    .padding(12)
-                                    .sketchPanel()
-                                Toggle("Bulky", isOn: $line.bulky)
-                                Toggle("Fragile", isOn: $line.fragile)
-                                if lines.count > 1 {
-                                    Button("Remove item") { lines.removeAll { $0.id == line.id } }
-                                        .foregroundStyle(Theme.bad)
-                                }
-                            }
-                            .padding(12)
-                            .ticketPanel()
+                        Text(draft.place.name).font(Theme.section())
+                        Text(draft.place.address).font(Theme.text(.caption)).foregroundStyle(Theme.muted)
+                        if personal {
+                            Text("This point is fictional and near \(draft.trip.originCity). It is not a real home or a precise driveway route.")
+                                .font(Theme.text(.caption)).foregroundStyle(Theme.muted)
                         }
-                        Button("Add item") { lines.append(ItemDraft()) }.font(Theme.text(.body, weight: .semibold))
-                        Text(quoteLabel).font(Theme.price())
-                        Text("Paid to the store separately. This delivery fee is simulated.")
-                            .font(Theme.text(.caption))
+                        CityRoute(origin: draft.trip.originCity, destination: draft.trip.destinationCity)
+                        Text("\(Format.firstName(draft.trip.driver?.displayName)) · leaves \(Format.relative(draft.trip.departureAt))")
                             .foregroundStyle(Theme.muted)
-                        TextField("Pickup reference", text: $reference)
+                        Text("Meetup \(draft.handoff.label)").foregroundStyle(Theme.muted)
+                        Text("Pickup details").font(Theme.text(.headline, weight: .semibold))
+                        TextField(personal ? "Black backpack with a red luggage tag, one bag, about 8 lb. My roommate Jordan will meet you at the front entrance." : "Two takeout bags: one rice bowl and one sandwich. Keep the drink upright.", text: $requestText, axis: .vertical)
+                            .lineLimit(4 ... 10)
                             .padding(12)
                             .sketchPanel()
+                        if personal {
+                            TextField("How many, and what it looks like", text: $quantity).padding(12).sketchPanel()
+                            TextField("Approximate weight, pounds. Leave blank if unknown.", text: $weightText)
+                                .keyboardType(.decimalPad)
+                                .padding(12)
+                                .sketchPanel()
+                            TextField("Who will meet the runner", text: $contact).padding(12).sketchPanel()
+                            TextField("Entrance, gate, or where they will meet", text: $access, axis: .vertical)
+                                .lineLimit(2 ... 5)
+                                .padding(12)
+                                .sketchPanel()
+                            Toggle("Bulky", isOn: $bulky)
+                            Toggle("Fragile", isOn: $fragile)
+                            Text("Optional item photo").font(Theme.text(.caption, weight: .semibold)).foregroundStyle(Theme.muted)
+                            screenshotCard
+                        } else {
+                            Toggle("About 35 lb", isOn: $heavy)
+                            Toggle("I've already ordered", isOn: $alreadyOrdered)
+                            if alreadyOrdered {
+                                Text("A runner is not guaranteed until acceptance. Home Run cannot undo a store purchase.")
+                                    .font(Theme.text(.caption)).foregroundStyle(Theme.muted)
+                                TextField("Name on the order", text: $orderName).padding(12).sketchPanel()
+                                Toggle("Merchant did not provide a number", isOn: $referenceMissing)
+                                if !referenceMissing {
+                                    TextField("Order number", text: $orderNumber).padding(12).sketchPanel()
+                                }
+                                TextField("Pickup code, if you have one", text: $pickupCode).padding(12).sketchPanel()
+                                screenshotCard
+                            } else {
+                                Text("Wait for your runner to accept before ordering.")
+                                    .font(Theme.text(.caption)).foregroundStyle(Theme.muted)
+                            }
+                        }
+                        Picker("Pickup window", selection: $windowChoice) {
+                            Text("30 minutes before departure").tag("30 minutes before departure")
+                            Text("When the runner is nearby").tag("When the runner is nearby")
+                        }
+                        TextField("Extra instructions", text: $instructions, axis: .vertical)
+                            .lineLimit(2 ... 5)
+                            .padding(12)
+                            .sketchPanel()
+                        Text(quoteLabel).font(Theme.price())
+                        Text("Delivery fee only. Simulated. No card is charged.")
+                            .font(Theme.text(.caption)).foregroundStyle(Theme.muted)
                         if let website = restaurantURL(draft.place.website) {
                             Link("Restaurant website", destination: website).fontWeight(.bold)
                         }
@@ -605,53 +703,98 @@ struct RequestSheet: View {
                         Text(routeCaption(draft.estimate.source))
                             .font(Theme.text(.caption))
                             .foregroundStyle(Theme.muted)
-                        TextField("Note for the driver", text: $note, axis: .vertical)
-                            .lineLimit(3 ... 5)
-                            .padding(12)
-                            .sketchPanel()
-                        Text("Don't order food yet. Wait for the driver to accept. Home Run doesn't process payments.")
-                            .font(Theme.text(.footnote)).foregroundStyle(Theme.muted)
                         if let error { ErrorBanner(message: error) }
                         PrimaryButton(title: "Send request", busy: busy) { submit() }
                     }
                 }
                 .padding(20)
             }
+            .scrollDismissesKeyboard(.interactively)
             .homeRunPage(road: false)
             .animation(reduceMotion ? nil : .snappy(duration: 0.35), value: confirmed?.id)
             .sensoryFeedback(.success, trigger: confirmed?.id) { old, new in
                 old == nil && new != nil
             }
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
-            .onAppear {
-                let staged = model.takeRepeatLines()
-                if !staged.isEmpty {
-                    lines = staged.map {
-                        ItemDraft(id: $0.id, name: $0.name, quantity: $0.quantity, weight: $0.weightPounds.map { String($0) } ?? "", bulky: $0.bulky, fragile: $0.fragile)
+            .task {
+                personal = draft.kind == "personal"
+                await restoreDraft()
+            }
+            .onDisappear { persistDraft() }
+            .sheet(isPresented: $showScreenshot) {
+                if let screenshot {
+                    NavigationStack {
+                        ScrollView([.horizontal, .vertical]) {
+                            Image(uiImage: screenshot)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(maxWidth: .infinity)
+                                .accessibilityLabel("Basket screenshot")
+                        }
+                        .homeRunPage(road: false)
+                        .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { showScreenshot = false } } }
                     }
                 }
+            }
+            .onChange(of: photoItem) { _, item in
+                guard let item else { return }
+                Task { await loadPhoto(item) }
             }
             .presentationDragIndicator(.visible)
         }
     }
 
+    private var screenshotCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let screenshot {
+                Button { showScreenshot = true } label: {
+                    Image(uiImage: screenshot)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxHeight: 220)
+                        .frame(maxWidth: .infinity)
+                        .accessibilityLabel("Basket screenshot. Full screen.")
+                }
+                HStack {
+                    PhotosPicker(selection: $photoItem, matching: .images) { Text("Replace") }
+                    Button("Remove") { self.screenshot = nil; photoItem = nil }
+                        .foregroundStyle(Theme.bad)
+                }
+                .font(Theme.text(.body, weight: .semibold))
+            } else {
+                PhotosPicker(selection: $photoItem, matching: .images) {
+                    Text("Add a screenshot")
+                        .font(Theme.text(.body, weight: .semibold))
+                        .frame(maxWidth: .infinity, minHeight: 88)
+                }
+                .sketchPanel()
+            }
+        }
+    }
+
     private var measured: (meters: Double, seconds: Double, source: String) {
+        if personal {
+            let source = DemoRouteFixture.isPricedRoad(draft.estimate.source) ? draft.estimate.source : draft.estimate.source
+            return (0, 0, source)
+        }
         let meters = max(0, (draft.estimate.withKm - draft.estimate.baseKm) * 1000)
         let seconds = max(0, draft.estimate.detourMinutes * 60)
         return (meters, seconds, draft.estimate.source)
     }
 
+    private var basketPounds: Double? {
+        if personal {
+            let trimmed = weightText.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return nil }
+            return Double(trimmed)
+        }
+        return heavy ? 35 : (bulky ? 20 : 5)
+    }
+
     private var quoteLabel: String {
-        guard DemoRouteFixture.isPricedRoad(measured.source) else {
-            return "Price needs review"
-        }
-        guard lines.allSatisfy({ !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else {
-            return "Name each item to see the delivery fee."
-        }
-        let confirmed = lines.allSatisfy { Double($0.weight) != nil }
-        guard confirmed else { return "Unknown weight needs a reviewed price." }
-        let pounds = lines.reduce(0.0) { $0 + (Double($1.weight) ?? 0) * Double($1.quantity) }
-        switch PricingPolicy.evaluate(.init(extraMeters: measured.meters, extraSeconds: measured.seconds, weightPounds: pounds, weightConfirmed: true, bulky: lines.contains { $0.bulky }, agreedWaitingMinutes: 0)) {
+        guard DemoRouteFixture.isPricedRoad(measured.source) else { return "Price needs review" }
+        guard let pounds = basketPounds else { return "Unknown weight needs a reviewed price." }
+        switch PricingPolicy.evaluate(.init(extraMeters: measured.meters, extraSeconds: measured.seconds, weightPounds: pounds, weightConfirmed: true, bulky: bulky, agreedWaitingMinutes: 0)) {
         case .quoted(let quote):
             return "Delivery fee \(Fees.money(quote.dollars))"
         case .manualReview(let reason):
@@ -672,35 +815,94 @@ struct RequestSheet: View {
         return "Driving route. Apple Maps provides this map."
     }
 
+    private func loadPhoto(_ item: PhotosPickerItem) async {
+        do {
+            guard let data = try await item.loadTransferable(type: Data.self), let image = UIImage(data: data), image.size.width > 0 else {
+                error = "Use a photo of the basket or item list."
+                return
+            }
+            screenshot = Self.fitted(image)
+            error = nil
+        } catch {
+            self.error = "Use a photo of the basket or item list."
+        }
+    }
+
+    private func restoreDraft() async {
+        let staged = model.takeRepeatLines()
+        if requestText.isEmpty, !staged.isEmpty {
+            requestText = staged.map { "\($0.quantity)× \($0.name)" }.joined(separator: "\n")
+        }
+        let saved: ComposerDraft? = try? await model.client().store("draft")
+        guard let saved, saved.tripId == draft.trip.id, saved.placeId == draft.place.placeId else { return }
+        loadedTrip = saved.tripId
+        if !saved.requestText.isEmpty { requestText = saved.requestText }
+        if !saved.merchandise.isEmpty { merchandise = saved.merchandise }
+        if !saved.substitution.isEmpty { substitution = saved.substitution }
+        instructions = saved.instructions
+        personal = saved.personal
+        bulky = saved.bulky
+        if let encoded = saved.screenshotBase64, let data = Data(base64Encoded: encoded), let image = UIImage(data: data) {
+            screenshot = image
+        }
+    }
+
+    private func persistDraft() {
+        guard !submitted else { return }
+        let dirty = !requestText.isEmpty || screenshot != nil || !merchandise.isEmpty || !instructions.isEmpty
+        guard dirty || loadedTrip == draft.trip.id else { return }
+        let body = DraftBody(
+            tripId: draft.trip.id,
+            placeId: draft.place.placeId,
+            requestText: requestText,
+            merchandise: merchandise,
+            substitution: substitution,
+            instructions: instructions,
+            personal: personal,
+            bulky: bulky,
+            screenshotBase64: screenshot?.jpegData(compressionQuality: 0.72)?.base64EncodedString(),
+            removeScreenshot: screenshot == nil
+        )
+        Task { let _: OkayBody? = try? await model.client().store("draft", method: "POST", body: body) }
+    }
+
+    private func pickupInstant() -> Date? {
+        guard let departure = Format.parse(draft.trip.departureAt) else { return nil }
+        let ready = windowChoice == "30 minutes before departure" ? departure.addingTimeInterval(-1_800) : departure.addingTimeInterval(-300)
+        return ready > DemoClock.now ? ready : nil
+    }
+
     private func submit() {
         guard !busy, confirmed == nil else { return }
+        let description = requestText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !description.isEmpty else {
+            error = "Add pickup details."
+            return
+        }
+        if personal && contact.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            error = "Add who will meet the runner. A phone number is not required."
+            return
+        }
+        if !personal && alreadyOrdered {
+            if orderName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                error = "Add the name on the order."
+                return
+            }
+            if !referenceMissing && orderNumber.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                error = "Add the order number, or say the merchant did not provide one."
+                return
+            }
+        }
+        guard let ready = pickupInstant() else {
+            error = "That pickup window is already past for this trip."
+            return
+        }
+        let image = screenshot?.jpegData(compressionQuality: 0.72)?.base64EncodedString()
         busy = true
         Task {
             defer { busy = false }
             do {
-                let prepared = lines.filter { !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-                guard !prepared.isEmpty else {
-                    error = "Add at least one item."
-                    return
-                }
-                guard !reference.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                    error = "Add the pickup reference the runner should look for."
-                    return
-                }
-                let orderLines = prepared.map { line in
-                    OrderLine(
-                        id: line.id,
-                        name: line.name.trimmingCharacters(in: .whitespacesAndNewlines),
-                        quantity: line.quantity,
-                        weightPounds: Double(line.weight),
-                        weightConfirmed: Double(line.weight) != nil,
-                        bulky: line.bulky,
-                        fragile: line.fragile,
-                        note: nil
-                    )
-                }
                 let arrival = (Format.parse(draft.trip.departureAt) ?? Date()).addingTimeInterval(draft.estimate.toDropoffMinutes * 60)
-                let formatter = ISO8601DateFormatter()
                 let body = NewOrderBody(
                     tripId: draft.trip.id,
                     restaurantPlaceId: draft.place.placeId,
@@ -717,26 +919,69 @@ struct RequestSheet: View {
                     detourMinutes: draft.estimate.detourMinutes,
                     deliveryFee: nil,
                     estimateSource: draft.estimate.source,
-                    estimatedArrivalAt: formatter.string(from: arrival),
-                    customerNote: note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : note,
-                    extraMeters: max(0, (draft.estimate.withKm - draft.estimate.baseKm) * 1000),
-                    extraSeconds: max(0, draft.estimate.detourMinutes * 60),
-                    weightPounds: nil,
-                    weightConfirmed: nil,
-                    bulky: nil,
-                    itemSummary: nil,
-                    pickupReference: reference.trimmingCharacters(in: .whitespacesAndNewlines),
-                    lines: orderLines,
-                    operationKey: operationKey
+                    estimatedArrivalAt: ISO8601DateFormatter().string(from: arrival),
+                    customerNote: instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : instructions,
+                    extraMeters: measured.meters,
+                    extraSeconds: measured.seconds,
+                    weightPounds: basketPounds,
+                    weightConfirmed: basketPounds != nil,
+                    bulky: bulky,
+                    itemSummary: description,
+                    pickupReference: nil,
+                    lines: nil,
+                    operationKey: operationKey,
+                    requestText: description,
+                    merchandiseCents: nil,
+                    substitution: nil,
+                    personalItem: personal,
+                    screenshotBase64: image,
+                    pickupKind: personal ? "personal" : "merchant",
+                    contactLabel: personal ? contact : nil,
+                    accessInstructions: personal ? access : nil,
+                    pickupWindow: windowChoice,
+                    itemQuantity: personal ? quantity : nil,
+                    fragile: fragile,
+                    alreadyOrdered: alreadyOrdered,
+                    pickupName: alreadyOrdered ? orderName : nil,
+                    restaurantOrderNumber: alreadyOrdered && !referenceMissing ? orderNumber : nil,
+                    referenceMissing: alreadyOrdered ? referenceMissing : nil,
+                    pickupReadyAt: ISO8601DateFormatter().string(from: ready),
+                    pickupCode: pickupCode.isEmpty ? nil : pickupCode,
+                    pickupInstructions: instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : instructions,
+                    readyConfirmed: nil
                 )
                 confirmed = try await model.client().store("orders", method: "POST", body: body)
+                submitted = true
+                let _: OkayBody = try await model.client().store("draft", method: "DELETE")
                 await model.refreshBadges()
             } catch {
                 self.error = error.localizedDescription
             }
         }
     }
+
+    private static func merchandiseCents(_ raw: String) -> Int? {
+        let cleaned = raw.replacingOccurrences(of: "$", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let decimal = Decimal(string: cleaned, locale: Locale(identifier: "en_US_POSIX")) else { return nil }
+        var cents = decimal * 100
+        var rounded = Decimal()
+        NSDecimalRound(&rounded, &cents, 0, .plain)
+        let value = (rounded as NSDecimalNumber).intValue
+        return (1...50_000).contains(value) ? value : nil
+    }
+
+    private static func fitted(_ image: UIImage) -> UIImage {
+        let maxSide: CGFloat = 1600
+        let scale = min(1, maxSide / max(image.size.width, image.size.height))
+        guard scale < 1 else { return image }
+        let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+        return UIGraphicsImageRenderer(size: size).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: size))
+        }
+    }
 }
+
+private struct OkayBody: Decodable { var ok: Bool }
 
 struct ItemDraft: Identifiable, Equatable {
     var id = UUID().uuidString

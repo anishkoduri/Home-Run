@@ -354,7 +354,7 @@ enum LegalCopy {
 
     Home Run is a student demo. It is not an official Texas A&M University service. The app coordinates a pickup between two people who already know the trip. It does not sell food, hold a card, or move money.
 
-    A quoted delivery fee is a simulation. Nothing is charged. Accepting a request, cancelling, or receiving a refund only updates the on-device demo ledger. A runner's share is a simulated balance, not a bank transfer.
+    Home Run coordinates the pickup. For a restaurant or store, the customer pays the merchant. Home Run's simulated charge is the delivery fee only. A home or personal-item pickup has no merchant order. Older demo records may still show a separate merchandise reimbursement. Accepting, cancelling, or refunding only updates the on-device ledger. Home Run cannot refund money paid to a store.
 
     Availability and earnings are never guaranteed. A trip can fill up, a quote can expire, and a runner can decline.
     """
@@ -364,11 +364,13 @@ enum LegalCopy {
     """
 
     static let faq = """
-    Who pays the restaurant? You do, outside Home Run, after a runner accepts.
+    Who pays the store? You do, after a runner accepts, unless you already ordered. Home Run does not check out with the merchant. The delivery fee is the only simulated charge.
 
-    What does the delivery fee mean? It is a simulated quote. The runner's share in the demo is 80 percent of that quote.
+    What should I send? Pickup details: what to collect, quantities, and anything the runner must recognize. After you pay the store, add the name, a reference or “Merchant did not provide one,” and the pickup time. A screenshot is optional and is not proof of payment.
 
-    Can I cancel? Before acceptance, the simulated authorization is released. After acceptance and before pickup, the full simulated fee is refunded. After pickup, open a support case.
+    Home or personal item? Use that choice. There is no merchant number. Confirm the item and contact will be ready. A phone number is not required.
+
+    Can I cancel? Before acceptance, the delivery authorization is released. After acceptance, before collection, the simulated delivery fee can be refunded. Money paid to a store is not refunded by Home Run. After collection, open a support case.
 
     Does a saved request book anything? No. It only notifies you if a matching trip is posted.
     """

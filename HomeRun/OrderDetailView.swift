@@ -1,4 +1,5 @@
 import MapKit
+import PhotosUI
 import SwiftUI
 
 struct OrderDetailView: View {
@@ -22,6 +23,18 @@ struct OrderDetailView: View {
     @State private var helpDetails = ""
     @State private var receipt: [LedgerEntry] = []
     @State private var showReceipt = false
+    @State private var basket: UIImage?
+    @State private var showBasket = false
+    @State private var actualAmount = ""
+    @State private var collectionChecked = false
+    @State private var referenceMissing = false
+    @State private var readyConfirmed = false
+    @State private var branchNote = ""
+    @State private var pickupCode = ""
+    @State private var windowChoice = "30 minutes before departure"
+    @State private var editingHandoff = false
+    @State private var detailsText = ""
+    @State private var handoffPhoto: PhotosPickerItem?
 
     var body: some View {
         ScrollView {
@@ -41,11 +54,25 @@ struct OrderDetailView: View {
         .navigationTitle(order?.restaurantName ?? "Order")
         .navigationBarTitleDisplayMode(.inline)
         .task { await watch { await load() } }
+        .sheet(isPresented: $showBasket) {
+            if let basket {
+                NavigationStack {
+                    ScrollView([.horizontal, .vertical]) {
+                        Image(uiImage: basket)
+                            .resizable()
+                            .scaledToFit()
+                            .accessibilityLabel("Basket screenshot")
+                    }
+                    .homeRunPage(road: false)
+                    .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { showBasket = false } } }
+                }
+            }
+        }
         .sheet(isPresented: $showReceipt) {
             NavigationStack {
                 List(receipt) { entry in
                     VStack(alignment: .leading) {
-                        Text(entry.kind.capitalized).font(Theme.text(.body, weight: .semibold))
+                        Text(Self.ledgerTitle(entry.kind)).font(Theme.text(.body, weight: .semibold))
                         Text(Fees.money(Double(entry.cents) / 100)).font(Theme.text(.caption))
                     }
                 }
@@ -67,7 +94,7 @@ struct OrderDetailView: View {
                     Text("\(order.trip?.originCity ?? "") → \(order.destinationLabel)").foregroundStyle(Theme.muted)
                 }
                 Spacer()
-                StatusPill(status: order.status)
+                StatusPill(status: order.status, title: order.progressTitle)
             }
             if let error { ErrorBanner(message: error) }
             actions(order, role: role)
@@ -90,7 +117,8 @@ struct OrderDetailView: View {
         }
         .padding(20)
         .onAppear {
-            pickupName = order.pickupName ?? model.profile?.displayName ?? ""
+            detailsText = order.itemSummary ?? ""
+            pickupName = order.pickupName ?? ""
             orderNumber = order.restaurantOrderNumber ?? ""
             instructions = order.pickupInstructions ?? ""
             if let readyAt = order.pickupReadyAt, let date = Format.parse(readyAt) { ready = date }
@@ -107,29 +135,65 @@ struct OrderDetailView: View {
                     .foregroundStyle(Theme.muted)
                 PrimaryButton(title: "Accept request", busy: busy) { Task { await setStatus(order, .accepted) } }
                 Button("Decline") { Task { await setStatus(order, .declined) } }.foregroundStyle(Theme.bad)
-            } else if role == "driver", let next = order.status.driverNext {
-                Text(next.1)
-                PrimaryButton(title: next.1, busy: busy) { Task { await setStatus(order, next.0) } }
-            } else if role == "customer" && (order.status == .accepted || order.status == .restaurantConfirmed) {
-                Text(order.status == .accepted ? "Place and pay for the restaurant order, then add pickup details." : "Update pickup details.")
+            } else if role == "driver", order.isRunnerPurchase, order.status == .accepted, order.purchaseState != "placed" {
+                Text("Older runner-purchase record. It is not a new delivery request.")
                     .foregroundStyle(Theme.muted)
-                Toggle("I placed and paid for my order", isOn: $ordered)
-                TextField("Name on the order", text: $pickupName)
-                    .padding(12)
-                    .frame(minHeight: 44)
-                    .sketchPanel()
-                TextField("Order number (optional)", text: $orderNumber)
-                    .padding(12)
-                    .frame(minHeight: 44)
-                    .sketchPanel()
-                DatePicker("Ready", selection: $ready)
-                TextField("Pickup instructions", text: $instructions, axis: .vertical)
-                    .padding(12)
-                    .frame(minHeight: 44)
-                    .sketchPanel()
-                PrimaryButton(title: order.status == .restaurantConfirmed ? "Save pickup details" : "Confirm restaurant order", busy: busy) {
-                    Task { await confirm(order) }
+            } else if role == "driver", order.usesCustomerHandoff, order.pendingReadyAt != nil {
+                Text("The customer asked for a new pickup time. The delivery fee stays the same until you agree.")
+                Button("Agree to the new time") { Task { await decideWindow(order, "accept") } }.fontWeight(.bold)
+                Button("Keep the earlier time") { Task { await decideWindow(order, "decline") } }
+            } else if role == "driver", order.usesCustomerHandoff, order.placeChangePending == true {
+                Text(order.pendingRestaurantName ?? "The customer asked about a different branch.")
+                Button("Agree, keep the delivery fee") { Task { await decidePlace(order) } }.fontWeight(.bold)
+            } else if role == "driver", order.usesCustomerHandoff, order.detailsNeedReview {
+                Text("Review pickup details").font(Theme.text(.headline, weight: .semibold))
+                Text("Customer submitted confirmation. This is not proof the merchant is ready.")
+                    .font(Theme.text(.caption)).foregroundStyle(Theme.muted)
+                Button("Details received") { Task { await markReviewed(order) } }.fontWeight(.bold)
+                Button("Ask a question") { messageText = "" }
+                    .font(Theme.text(.body, weight: .semibold))
+            } else if role == "driver", order.usesCustomerHandoff, order.status == .accepted {
+                Text("Waiting for pickup details. Do not collect this yet.")
+                    .foregroundStyle(Theme.muted)
+            } else if role == "driver", let next = order.driverAction {
+                Text(next.1)
+                if next.0 == .pickedUp && order.usesCustomerHandoff {
+                    Toggle("The name or reference and the described items match what I am collecting", isOn: $collectionChecked)
+                    PrimaryButton(title: next.1, busy: busy) { Task { await collect(order) } }
+                        .disabled(!collectionChecked)
+                } else {
+                    PrimaryButton(title: next.1, busy: busy) { Task { await setStatus(order, next.0) } }
                 }
+            } else if role == "customer", order.isRunnerPurchase, order.purchaseState == "revision", let revised = order.revisionMerchandiseCents {
+                Text("The store total is \(Fees.money(Double(revised) / 100)). You approved \(Fees.money(Double(order.merchandiseCents ?? 0) / 100)).")
+                    .font(Theme.text(.body, weight: .semibold))
+                Button("Approve new merchandise total") { Task { await revise(order, "accept") } }.fontWeight(.bold)
+                Button("Keep the approved total") { Task { await revise(order, "decline") } }
+            } else if role == "customer", order.needsHandoffForm {
+                if order.status == .requested && !order.isPersonalPickup {
+                    Text("Wait for your runner to accept before ordering.")
+                        .font(Theme.text(.body, weight: .semibold))
+                    Text("If you already ordered, add the confirmation below. A runner is not guaranteed until acceptance, and Home Run cannot undo the store purchase.")
+                        .font(Theme.text(.caption)).foregroundStyle(Theme.muted)
+                } else if order.status == .accepted && !order.isPersonalPickup {
+                    Text("Ready to place your order").font(Theme.text(.headline, weight: .semibold))
+                    Text("Order directly from the store, then add your pickup confirmation here.")
+                        .foregroundStyle(Theme.muted)
+                } else if order.isPersonalPickup && order.status == .accepted {
+                    Text("Confirm the item and contact will be ready during the window.")
+                        .foregroundStyle(Theme.muted)
+                } else {
+                    Text("A runner is not guaranteed until acceptance.")
+                        .foregroundStyle(Theme.muted)
+                }
+                handoffForm(order)
+            } else if role == "customer", order.canEditHandoff {
+                Text("Customer submitted confirmation.")
+                if order.detailsReviewedAt != nil && !order.detailsNeedReview {
+                    Text("Runner reviewed details.").foregroundStyle(Theme.good)
+                }
+                Button(editingHandoff ? "Hide pickup form" : "Update pickup details") { editingHandoff.toggle() }
+                if editingHandoff { handoffForm(order) }
             } else if role == "driver", order.status == .arriving {
                 Text("Ask the customer for the confirmation code. It is not shown here.")
                     .font(Theme.text(.caption)).foregroundStyle(Theme.muted)
@@ -149,7 +213,7 @@ struct OrderDetailView: View {
             } else if order.status == .delivered {
                 Text("Delivered. The delivery fee stayed a simulation.")
             } else if order.status == .requested && role == "customer" {
-                Text("Waiting for the driver. Don't order from the restaurant yet.")
+                Text(order.isPersonalPickup ? "Awaiting runner. This is a home or personal-item pickup." : "Awaiting runner.")
             } else {
                 Text(order.status.label)
             }
@@ -160,12 +224,12 @@ struct OrderDetailView: View {
                 Button("Approve price") { Task { await decide("accept") } }.fontWeight(.bold)
                 Button("Keep earlier terms") { Task { await decide("decline") } }
             }
-            if (role == "customer" && order.status.customerCanCancel) || (role == "driver" && order.status.driverCanCancel) {
+            if (role == "customer" && order.customerMayCancel) || (role == "driver" && order.driverMayCancel) {
                 Button("Cancel delivery") { confirmCancel = true }
                     .foregroundStyle(Theme.bad)
                     .padding(.top, 6)
             }
-            if role == "customer", order.status == .pickedUp || order.status == .onTheWay || order.status == .arriving || order.status == .delivered {
+            if role == "customer", order.status == .restaurantConfirmed || order.status == .pickedUp || order.status == .onTheWay || order.status == .arriving || order.status == .delivered {
                 Button("Get help") { helpOpen = true }
                     .font(Theme.text(.body, weight: .semibold))
             }
@@ -194,9 +258,10 @@ struct OrderDetailView: View {
 
     private func cancelCopy(_ order: Order, role: String) -> String {
         switch order.status {
-        case .requested: return "The simulated authorization is released. Nothing was captured."
-        case .accepted, .restaurantConfirmed: return "The full simulated delivery fee is refunded. There is no penalty."
-        case .pickedUp, .onTheWay, .arriving: return "After pickup, cancellation goes through support."
+        case .requested: return "The simulated delivery authorization is released. Nothing was captured."
+        case .accepted: return order.isPersonalPickup ? "The personal-item pickup has not been confirmed ready. The simulated delivery fee is refunded." : "The store confirmation is not in yet. The simulated delivery fee is refunded. Money you already paid the store is not refunded here."
+        case .restaurantConfirmed: return order.isRunnerPurchase ? "This older purchase stays with support." : "The simulated delivery fee is refunded. Home Run cannot refund money paid to the store."
+        case .pickedUp, .onTheWay, .arriving: return "After collection, cancellation goes through support."
         default: return "This stops the delivery."
         }
     }
@@ -244,7 +309,7 @@ struct OrderDetailView: View {
         let steps: [(String, String?)] = [
             ("Requested", order.createdAt),
             ("Driver accepted", order.acceptedAt),
-            ("Restaurant order confirmed", order.restaurantOrderConfirmedAt),
+            ("Purchase recorded", order.restaurantOrderConfirmedAt),
             ("Picked up", order.pickedUpAt),
             ("On the way", order.onTheWayAt),
             ("Arriving", order.status == .arriving || order.status == .delivered ? (order.deliveredAt ?? order.onTheWayAt) : nil),
@@ -284,28 +349,76 @@ struct OrderDetailView: View {
             if let arrival = order.estimatedArrivalAt {
                 Text("Estimated around \(Format.time(arrival))").font(Theme.text(.caption)).foregroundStyle(Theme.muted)
             }
-            Text("Fee").font(Theme.text(.headline, weight: .semibold)).padding(.top, 6)
-            Text(order.quoteState == "expired" ? "Quote expired. Submit a new request." : (order.quoteState == "review" || order.deliveryFee == nil ? "Price needs review" : Fees.money(order.deliveryFee))).font(Theme.price()).foregroundStyle(Theme.maroon)
+            if let basket {
+                Button { showBasket = true } label: {
+                    Image(uiImage: basket)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxHeight: 220)
+                        .frame(maxWidth: .infinity)
+                        .accessibilityLabel("Basket screenshot. Full screen.")
+                }
+                .padding(.top, 6)
+            }
+            if let summary = order.itemSummary {
+                Text("Pickup details").font(Theme.text(.headline, weight: .semibold)).padding(.top, 6)
+                Text(summary)
+            }
+            if order.handoffSubmittedAt != nil {
+                Text("Customer submitted confirmation").font(Theme.text(.caption, weight: .semibold))
+            }
+            if order.detailsReviewedAt != nil, !order.detailsNeedReview {
+                Text("Runner reviewed details").font(Theme.text(.caption, weight: .semibold)).foregroundStyle(Theme.good)
+            }
+            if let name = order.pickupName { Text("Name on the order: \(name)") }
+            if order.referenceMissing == true {
+                Text("Merchant did not provide a number.")
+            } else if let number = order.restaurantOrderNumber {
+                Text("Reference: \(number)")
+            }
+            if let window = order.pickupWindowLabel { Text("Pickup window: \(window)") }
+            if let code = order.pickupCode { Text("Pickup code: \(code)") }
+            if let contact = order.contactLabel { Text("Meet: \(contact)") }
+            if let access = order.accessInstructions { Text(access) }
+            if order.isRunnerPurchase {
+                Text("Earlier runner-purchase record. Its merchandise ledger is unchanged.").font(Theme.text(.caption)).foregroundStyle(Theme.muted)
+            }
             if let lines = order.lines, !lines.isEmpty {
                 ForEach(lines) { line in
                     Text("\(line.quantity)× \(line.name)\(line.weightPounds.map { " · \(Int($0)) lb" } ?? "")")
                         .font(Theme.text(.subheadline))
                 }
-            } else if let summary = order.itemSummary { Text(summary) }
-            Text("Demo fee. No real charge.").font(Theme.text(.caption)).foregroundStyle(Theme.muted)
+            }
+            Text("Amounts").font(Theme.text(.headline, weight: .semibold)).padding(.top, 6)
+            if order.quoteState == "expired" {
+                Text("Quote expired. Submit a new request.").font(Theme.price()).foregroundStyle(Theme.maroon)
+            } else if order.quoteState == "review" || order.deliveryFee == nil {
+                Text("Price needs review").font(Theme.price()).foregroundStyle(Theme.maroon)
+            } else if let goods = order.merchandiseCents, let fee = order.quoteCents {
+                Text("Merchandise \(Fees.money(Double(order.actualMerchandiseCents ?? goods) / 100))")
+                Text("Delivery \(Fees.money(Double(fee) / 100))")
+                Text("Total approved \(Fees.money(Double((order.actualMerchandiseCents ?? goods) + fee) / 100))").font(Theme.price()).foregroundStyle(Theme.maroon)
+            } else {
+                Text("Delivery \(Fees.money(order.deliveryFee))").font(Theme.price()).foregroundStyle(Theme.maroon)
+            }
+            Text("Simulated. Merchandise reimbursement is separate from the delivery earning.").font(Theme.text(.caption)).foregroundStyle(Theme.muted)
             if role == "driver", let share = order.runnerShareCents {
-                Text("Your simulated share \(Fees.money(Double(share) / 100))").font(Theme.text(.caption))
+                Text("Delivery earning \(Fees.money(Double(share) / 100))").font(Theme.text(.caption))
+                if let goods = order.actualMerchandiseCents ?? order.merchandiseCents, order.personalItem != true {
+                    Text("Merchandise reimbursement \(Fees.money(Double(goods) / 100))").font(Theme.text(.caption))
+                }
             }
             if role == "customer", let handle = order.driver?.paymentHandle {
-                Text("Send to \(handle)").font(Theme.text(.caption))
+                Text("Runner handle \(handle). Simulated only.").font(Theme.text(.caption))
             }
             if order.status == .delivered, role == "customer" {
                 Button("Order again") {
-                    model.stageRepeat(order.lines ?? [])
+                    let lines = order.lines ?? [OrderLine(id: order.id, name: order.itemSummary ?? order.restaurantName, quantity: 1, weightPounds: nil, weightConfirmed: false, bulky: false, fragile: false, note: nil)]
+                    model.stageRepeat(lines)
                 }
                 .font(Theme.text(.body, weight: .semibold))
             }
-            Text("Home Run doesn't process or verify payments.").font(Theme.text(.caption)).foregroundStyle(Theme.muted)
+            Text("No card is charged. Amounts stay in the demo ledger.").font(Theme.text(.caption)).foregroundStyle(Theme.muted)
             Button("View receipt") { Task { await loadReceipt(order) } }
                 .font(Theme.text(.body, weight: .semibold))
         }
@@ -322,9 +435,12 @@ struct OrderDetailView: View {
             let envelope: OrderEnvelope = try await model.client().store("orders", query: ["id": id])
             order = envelope.order
             if envelope.order == nil { error = "Order not found." }
-            else if routePath == nil, let order = envelope.order {
-                await loadRoute(order)
-                await loadMessages()
+            else if let order = envelope.order {
+                await loadBasket(order)
+                if routePath == nil {
+                    await loadRoute(order)
+                    await loadMessages()
+                }
             }
         } catch {
             self.error = error.localizedDescription
@@ -394,25 +510,169 @@ struct OrderDetailView: View {
         }
     }
 
-    private func confirm(_ order: Order) async {
-        if !ordered { error = "Place your order with the restaurant first, then check the box."; return }
-        if pickupName.trimmingCharacters(in: .whitespaces).isEmpty { error = "Add the name the order is under."; return }
+    private func loadBasket(_ order: Order) async {
+        guard order.screenshotName != nil, basket == nil else { return }
+        guard let payload: AttachmentPayload = try? await model.client().store("attachment", query: ["id": order.id]) else { return }
+        if let encoded = payload.jpegBase64, let data = Data(base64Encoded: encoded), let image = UIImage(data: data) {
+            basket = image
+        }
+    }
+
+    @ViewBuilder
+    private func handoffForm(_ order: Order) -> some View {
+        TextField("Pickup details", text: $detailsText, axis: .vertical)
+            .lineLimit(3 ... 8)
+            .padding(12)
+            .sketchPanel()
+        if order.isPersonalPickup {
+            Toggle("The item and contact will be ready during this window", isOn: $readyConfirmed)
+            Text(order.contactLabel ?? "Add a contact label on the request.")
+                .font(Theme.text(.caption)).foregroundStyle(Theme.muted)
+        } else {
+            TextField("Name on the order", text: $pickupName).padding(12).sketchPanel()
+            Toggle("Merchant did not provide one", isOn: $referenceMissing)
+            if !referenceMissing {
+                TextField("Order number", text: $orderNumber).padding(12).sketchPanel()
+            }
+            TextField("Pickup code, if you have one", text: $pickupCode).padding(12).sketchPanel()
+            if let website = restaurantURL(order.restaurantWebsite) {
+                Link("Merchant website", destination: website).fontWeight(.bold)
+            }
+        }
+        Picker("Pickup window", selection: $windowChoice) {
+            Text("30 minutes before departure").tag("30 minutes before departure")
+            Text("When the runner is nearby").tag("When the runner is nearby")
+        }
+        TextField("Collection instructions", text: $instructions, axis: .vertical)
+            .lineLimit(2 ... 5)
+            .padding(12)
+            .sketchPanel()
+        if order.status != .requested {
+            TextField("Different branch, if this one changed", text: $branchNote).padding(12).sketchPanel()
+        }
+        PhotosPicker(selection: $handoffPhoto, matching: .images) {
+            Text(order.isPersonalPickup ? "Add an item photo" : "Add a confirmation screenshot")
+        }
+        Text("A screenshot is information you provide. It does not prove payment or that the merchant is ready.")
+            .font(Theme.text(.caption)).foregroundStyle(Theme.muted)
+        PrimaryButton(title: "Save pickup details", busy: busy) { Task { await saveHandoff(order) } }
+    }
+
+    private func saveHandoff(_ order: Order) async {
+        guard let tripDeparture = order.trip?.departureAt, let departure = Format.parse(tripDeparture) else {
+            error = "This trip has no departure time."
+            return
+        }
+        let ready = windowChoice == "30 minutes before departure" ? departure.addingTimeInterval(-1_800) : departure.addingTimeInterval(-300)
+        guard ready > DemoClock.now else {
+            error = "That pickup window is already past for this trip."
+            return
+        }
+        var image: String?
+        if let handoffPhoto, let data = try? await handoffPhoto.loadTransferable(type: Data.self), let picture = UIImage(data: data) {
+            image = picture.jpegData(compressionQuality: 0.72)?.base64EncodedString()
+        }
         busy = true
         defer { busy = false }
         do {
-            let patch = PickupPatch(
-                pickupName: pickupName.trimmingCharacters(in: .whitespaces),
-                restaurantOrderNumber: orderNumber.trimmingCharacters(in: .whitespaces).isEmpty ? nil : orderNumber,
+            let updated: Order = try await model.client().store("orders", method: "PATCH", query: ["id": order.id], body: HandoffSubmit(
+                requestText: detailsText.isEmpty ? (order.itemSummary ?? "") : detailsText,
+                pickupName: pickupName,
+                restaurantOrderNumber: referenceMissing ? nil : orderNumber,
+                referenceMissing: referenceMissing,
+                pickupWindow: windowChoice,
                 pickupReadyAt: ISO8601DateFormatter().string(from: ready),
-                pickupInstructions: instructions.trimmingCharacters(in: .whitespaces).isEmpty ? nil : instructions,
-                status: order.status == .restaurantConfirmed ? nil : OrderStatus.restaurantConfirmed.rawValue
-            )
-            let updated: Order = try await model.client().store("orders", method: "PATCH", query: ["id": order.id], body: patch)
+                pickupCode: pickupCode.isEmpty ? nil : pickupCode,
+                pickupInstructions: instructions.isEmpty ? nil : instructions,
+                readyConfirmed: order.isPersonalPickup ? readyConfirmed : nil,
+                contactLabel: order.contactLabel,
+                accessInstructions: order.accessInstructions,
+                screenshotBase64: image,
+                removeScreenshot: false,
+                branchNote: branchNote.isEmpty ? nil : branchNote
+            ))
+            self.order = updated
+            editingHandoff = false
+            error = nil
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    private func markReviewed(_ order: Order) async {
+        do {
+            let updated: Order = try await model.client().store("orders", method: "PATCH", query: ["id": order.id], body: DetailsDecision(detailsDecision: "received"))
+            self.order = updated
+        } catch { self.error = error.localizedDescription }
+    }
+
+    private func decideWindow(_ order: Order, _ decision: String) async {
+        do {
+            let updated: Order = try await model.client().store("orders", method: "PATCH", query: ["id": order.id], body: WindowDecision(windowDecision: decision))
+            self.order = updated
+        } catch { self.error = error.localizedDescription }
+    }
+
+    private func decidePlace(_ order: Order) async {
+        do {
+            let updated: Order = try await model.client().store("orders", method: "PATCH", query: ["id": order.id], body: PlaceDecision(placeDecision: "accept"))
+            self.order = updated
+        } catch { self.error = error.localizedDescription }
+    }
+
+    private func collect(_ order: Order) async {
+        busy = true
+        defer { busy = false }
+        do {
+            let updated: Order = try await model.client().store("orders", method: "PATCH", query: ["id": order.id], body: CollectionPatch(status: OrderStatus.pickedUp.rawValue, collectionConfirmed: true))
+            Haptics.success()
+            self.order = updated
+        } catch { self.error = error.localizedDescription }
+    }
+
+    private func recordPurchase(_ order: Order) async {
+        let cleaned = actualAmount.replacingOccurrences(of: "$", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let decimal = Decimal(string: cleaned, locale: Locale(identifier: "en_US_POSIX")) else {
+            error = "Enter the actual merchandise total."
+            return
+        }
+        var cents = decimal * 100
+        var rounded = Decimal()
+        NSDecimalRound(&rounded, &cents, 0, .plain)
+        let value = (rounded as NSDecimalNumber).intValue
+        guard value >= 0 else { error = "Enter the actual merchandise total."; return }
+        busy = true
+        defer { busy = false }
+        do {
+            let updated: Order = try await model.client().store("orders", method: "PATCH", query: ["id": order.id], body: PurchasePatch(purchaseActualCents: value, purchaseReference: orderNumber.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : orderNumber))
             Haptics.success()
             self.order = updated
             error = nil
         } catch {
             self.error = error.localizedDescription
+        }
+    }
+
+    private func revise(_ order: Order, _ decision: String) async {
+        do {
+            let updated: Order = try await model.client().store("orders", method: "PATCH", query: ["id": order.id], body: RevisionDecision(revisionDecision: decision))
+            self.order = updated
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    private static func ledgerTitle(_ kind: String) -> String {
+        switch kind {
+        case "earning": return "Runner delivery earning"
+        case "merchandise-reimburse": return "Merchandise reimbursement"
+        case "platform-share": return "Platform delivery share"
+        case "merchandise-refund": return "Merchandise difference"
+        case "merchandise-unrefunded": return "Merchandise not refunded"
+        case "delivery-refund", "refund": return "Delivery refund"
+        case "delivery-capture", "capture": return "Delivery captured"
+        case "merchandise-capture": return "Merchandise captured"
+        default: return kind.replacingOccurrences(of: "-", with: " ").capitalized
         }
     }
 }

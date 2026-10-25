@@ -112,7 +112,7 @@ struct ProfileView: View {
                     Button("Sign out", role: .destructive) { Task { await model.signOut() } }
                         .font(Theme.text(.body, weight: .semibold))
                         .frame(maxWidth: .infinity, minHeight: 44)
-                    Text("Home Run coordinates deliveries only. Restaurant orders and delivery fees are paid outside the app.")
+                    Text("You pay the store yourself. Home Run's simulated charge is the delivery fee only. No card is charged.")
                         .font(Theme.text(.caption)).foregroundStyle(Theme.muted)
                 }
                 .padding(20)

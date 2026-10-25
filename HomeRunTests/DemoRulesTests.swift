@@ -19,6 +19,7 @@ struct DemoRulesTests {
     @Test func cancellationFollowsPickup() {
         #expect(DemoRules.cancellationEffect(status: .requested) == "release")
         #expect(DemoRules.cancellationEffect(status: .accepted) == "refund")
+        #expect(DemoRules.cancellationEffect(status: .restaurantConfirmed) == "support")
         #expect(DemoRules.cancellationEffect(status: .pickedUp) == "support")
         #expect(DemoRules.cancellationEffect(status: .delivered) == "support-delivered")
     }

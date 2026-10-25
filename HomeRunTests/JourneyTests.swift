@@ -101,7 +101,7 @@ struct JourneyTests {
 
         let ledger: LedgerList = try await send(db, "ledger", token: jordan.token, query: ["order": order.id])
         #expect(ledger.entries.filter { $0.kind == "earning" }.count == 1)
-        #expect(ledger.entries.filter { $0.kind == "capture" }.count == 1)
+        #expect(ledger.entries.filter { $0.kind == "delivery-capture" }.count == 1)
 
         let url = await db.testingLocation()
         let reopened = AppDatabase.reopenTestingStore(at: url)

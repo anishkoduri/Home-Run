@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import UIKit
 
 actor AppDatabase {
     static let shared = AppDatabase(storageURL: AppDatabase.defaultStorageURL)
@@ -97,6 +98,10 @@ actor AppDatabase {
             changed = true
         }
         if seedHistoryIfNeeded() { changed = true }
+        for index in db.orders.indices where db.orders[index].orderingModel == nil && db.orders[index].merchandiseCents != nil {
+            db.orders[index].orderingModel = "runner_purchase"
+            changed = true
+        }
         if changed { try? save() }
         guard !db.users.contains(where: { $0.email == "1" }) else { return }
         let salt = UUID().uuidString
@@ -160,6 +165,7 @@ actor AppDatabase {
             try repeatTrip(user: user, id: id, cadence: text(payload["cadence"], max: 20) ?? "weekly")
             return try encode(Okay(ok: true))
         case ("orders", "GET"):
+            if remindMissingHandoff(for: user) { try? save() }
             if let id = query["id"] {
                 let order = db.orders.first { $0.id == id && ($0.customerId == user.id || $0.driverId == user.id) }
                 return try encode(OrderBox(order: order.map { presented($0, viewer: user) }))
@@ -246,6 +252,17 @@ actor AppDatabase {
             return try encode(try prepareScenario(user: user, number: number))
         case ("inbox-count", "GET"):
             return try encode(inboxCount(for: user))
+        case ("attachment", "GET"):
+            guard let id = query["id"] else { throw APIError(message: "Missing order.", code: "bad_request") }
+            return try encode(attachment(for: user, orderId: id))
+        case ("draft", "GET"):
+            return try encode(loadDraft(userId: user.id))
+        case ("draft", "POST"):
+            try saveDraft(user: user, body: payload)
+            return try encode(Okay(ok: true))
+        case ("draft", "DELETE"):
+            removeDraft(userId: user.id)
+            return try encode(Okay(ok: true))
         default:
             throw APIError(message: "Unknown action", code: "not_found")
         }
@@ -471,16 +488,25 @@ actor AppDatabase {
             for orderIndex in db.orders.indices where db.orders[orderIndex].tripId == tripId {
                 let orderStatus = db.orders[orderIndex].status
                 guard orderStatus == .requested || orderStatus == .accepted || orderStatus == .restaurantConfirmed else { continue }
-                let effect = DemoRules.cancellationEffect(status: orderStatus)
+                let effect = DemoRules.cancellationEffect(status: orderStatus, orderingModel: db.orders[orderIndex].orderingModel)
                 db.orders[orderIndex].status = .cancelled
                 db.orders[orderIndex].cancelledAt = Self.stamp()
                 db.orders[orderIndex].cancelledBy = user.id
-                if effect == "release" {
-                    postLedger(orderId: db.orders[orderIndex].id, kind: "release", cents: db.orders[orderIndex].quoteCents ?? 0, key: "release:\(db.orders[orderIndex].id)")
+                if orderStatus == .restaurantConfirmed && db.orders[orderIndex].isRunnerPurchase {
+                    let delivery = db.orders[orderIndex].quoteCents ?? 0
+                    postLedger(orderId: db.orders[orderIndex].id, kind: "refund", cents: delivery, key: "refund:\(db.orders[orderIndex].id)")
+                    let goods = db.orders[orderIndex].actualMerchandiseCents ?? db.orders[orderIndex].merchandiseCents ?? 0
+                    if goods > 0 {
+                        postLedger(orderId: db.orders[orderIndex].id, kind: "merchandise-unrefunded", cents: goods, key: "merchandise-unrefunded:\(db.orders[orderIndex].id)")
+                    }
+                    notify(recipient: db.orders[orderIndex].customerId, type: "cancellation", orderId: db.orders[orderIndex].id, title: "Trip cancelled", body: "The simulated delivery fee was refunded. The merchant purchase is not automatically refunded.")
+                } else if effect == "release" {
+                    releaseBoth(db.orders[orderIndex])
+                    notify(recipient: db.orders[orderIndex].customerId, type: "cancellation", orderId: db.orders[orderIndex].id, title: "Trip cancelled", body: "The request was released before acceptance. Nothing was captured.")
                 } else if effect == "refund" {
-                    postLedger(orderId: db.orders[orderIndex].id, kind: "refund", cents: db.orders[orderIndex].quoteCents ?? 0, key: "refund:\(db.orders[orderIndex].id)")
+                    refundUnpurchased(db.orders[orderIndex])
+                    notify(recipient: db.orders[orderIndex].customerId, type: "cancellation", orderId: db.orders[orderIndex].id, title: "Trip cancelled", body: "The runner cancelled before buying. The simulated merchandise and delivery amounts were refunded.")
                 }
-                notify(recipient: db.orders[orderIndex].customerId, type: "cancellation", orderId: db.orders[orderIndex].id, title: "Trip cancelled", body: "The runner cancelled before pickup. The simulated delivery fee was released or refunded.")
             }
         default:
             throw APIError(message: "That trip update isn't allowed.", code: "bad_request")
@@ -669,6 +695,9 @@ actor AppDatabase {
         for index in db.orders.indices where db.orders[index].tripId == tripId && db.orders[index].status == .requested {
             if db.orders[index].quoteState == "quoted" || db.orders[index].quoteState == "customer_approval" {
                 postLedger(orderId: db.orders[index].id, kind: "release", cents: db.orders[index].quoteCents ?? db.orders[index].previousQuoteCents ?? 0, key: "release:\(db.orders[index].id)")
+                if let goods = db.orders[index].merchandiseCents, goods > 0 {
+                    postLedger(orderId: db.orders[index].id, kind: "merchandise-release", cents: goods, key: "merchandise-release:\(db.orders[index].id)")
+                }
             }
             db.orders[index].quoteState = "expired"
             db.orders[index].deliveryFee = nil
@@ -790,14 +819,53 @@ actor AppDatabase {
         order.operationKey = operationKey
         order.weightPounds = Self.number(pricingBody["weight_pounds"])
         order.lines = parsedLines.isEmpty ? nil : parsedLines
+        let kind = text(body["pickup_kind"], max: 20)
+        let personal = kind == "personal" || flag(body["personal_item"]) == true
+        order.personalItem = personal
+        if let requestText = text(body["request_text"], max: 800) {
+            order.itemSummary = requestText
+        }
+        if parsedLines.isEmpty {
+            guard !(order.itemSummary ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw APIError(message: "Add pickup details.", code: "bad_request")
+            }
+            order.orderingModel = personal ? "personal" : "customer_paid"
+            order.merchandiseCents = nil
+            order.contactLabel = text(body["contact_label"], max: 80)
+            order.accessInstructions = text(body["access_instructions"], max: 500)
+            order.pickupWindowLabel = text(body["pickup_window"], max: 120)
+            order.itemQuantity = text(body["item_quantity"], max: 40)
+            order.fragile = flag(body["fragile"])
+            order.bulkyItem = flag(body["bulky"])
+            if personal {
+                guard order.contactLabel != nil else {
+                    throw APIError(message: "Add who will meet the runner. A phone number is not required.", code: "bad_request")
+                }
+                guard order.pickupWindowLabel != nil else {
+                    throw APIError(message: "Choose when the item will be ready.", code: "bad_request")
+                }
+            } else if flag(body["already_ordered"]) == true {
+                try storeHandoff(&order, body: body, trip: trip, creating: true)
+                order.alreadyOrdered = true
+            }
+            if let encoded = text(body["screenshot_base64"], max: 12_000_000) {
+                order.screenshotName = try storeScreenshot(encoded, orderId: order.id)
+            }
+            if order.handoffSubmittedAt == nil { order.pickupName = nil }
+        }
+        order.purchaseState = nil
         if let departure = Self.parse(trip.departureAt) {
             let deadline = DemoRules.quoteDeadline(submitted: DemoClock.now, cutoff: departure)
             order.quoteExpiresAt = Self.plain.string(from: deadline)
         }
         db.orders.append(order)
         if order.quoteState == "quoted", let cents = order.quoteCents {
-            postLedger(orderId: order.id, kind: "authorize", cents: cents, key: "authorize:\(order.id)")
-            notify(recipient: order.driverId, type: "request", orderId: order.id, title: "New pickup request", body: "\(order.restaurantName) is waiting for you.")
+            postLedger(orderId: order.id, kind: "delivery-authorize", cents: cents, key: "delivery-authorize:\(order.id)")
+            if order.isRunnerPurchase, let goods = order.merchandiseCents, goods > 0 {
+                postLedger(orderId: order.id, kind: "merchandise-authorize", cents: goods, key: "merchandise-authorize:\(order.id)")
+            }
+            let noun = order.orderingModel == "personal" ? "A personal-item pickup" : order.restaurantName
+            notify(recipient: order.driverId, type: "request", orderId: order.id, title: "New pickup request", body: "\(noun) is waiting for you.")
         }
         try save()
         return presented(order, viewer: user)
@@ -824,7 +892,7 @@ actor AppDatabase {
             if body.keys.contains("customer_note") { order.customerNote = text(body["customer_note"], max: 500) }
         }
 
-        let editingPickup = ["pickup_name", "restaurant_order_number", "pickup_ready_at", "pickup_instructions"].contains { body.keys.contains($0) }
+        let editingPickup = flag(body["handoff_submit"]) != true && ["pickup_name", "restaurant_order_number", "pickup_ready_at", "pickup_instructions"].contains { body.keys.contains($0) }
         if editingPickup {
             guard isCustomer, order.status == .accepted || order.status == .restaurantConfirmed else {
                 throw APIError(message: "Pickup details can only be added by the customer after the driver accepts.", code: "forbidden")
@@ -878,6 +946,9 @@ actor AppDatabase {
             order.status = .accepted
             order.acceptedAt = Self.stamp()
             postLedger(orderId: order.id, kind: "capture", cents: cents, key: "capture:\(order.id)")
+            if order.isRunnerPurchase, let goods = order.merchandiseCents, goods > 0 {
+                postLedger(orderId: order.id, kind: "merchandise-capture", cents: goods, key: "merchandise-capture:\(order.id)")
+            }
             notify(recipient: order.driverId, type: "counteroffer", orderId: order.id, title: "Price approved", body: "The customer approved the new delivery fee.")
         }
 
@@ -894,6 +965,115 @@ actor AppDatabase {
             let reason = text(body["delay_reason"], max: 160) ?? "The runner updated the arrival window."
             order.customerNote = reason
             notify(recipient: order.customerId, type: "delay", orderId: order.id, title: "Arrival updated", body: "About \(Int(minutes)) more minutes. \(reason)")
+        }
+
+        if flag(body["handoff_submit"]) == true {
+            guard isCustomer else { throw APIError(message: "Only the customer can add pickup confirmation.", code: "forbidden") }
+            guard order.usesCustomerHandoff else { throw APIError(message: "This order uses an earlier purchase record.", code: "bad_request") }
+            let trip = db.trips.first { $0.id == order.tripId }
+            try storeHandoff(&order, body: body, trip: trip, creating: false)
+        }
+
+        if text(body["details_decision"], max: 20) == "received" {
+            guard isDriver, order.usesCustomerHandoff, order.handoffComplete else {
+                throw APIError(message: "Pickup details are not ready to review.", code: "bad_request")
+            }
+            guard order.pendingReadyAt == nil, order.placeChangePending != true else {
+                throw APIError(message: "Agree on the changed time or branch before marking the details received.", code: "bad_request")
+            }
+            order.detailsReviewedAt = Self.stamp()
+            order.detailsChangedAt = nil
+            if order.status == .accepted { order.status = .restaurantConfirmed }
+            notify(recipient: order.customerId, type: "handoff-reviewed", orderId: order.id, title: "Runner reviewed details", body: "Your runner reviewed the pickup details you submitted.")
+        }
+
+        if text(body["window_decision"], max: 20) == "accept" {
+            guard isDriver, let ready = order.pendingReadyAt else {
+                throw APIError(message: "There isn't a new pickup time waiting for you.", code: "bad_request")
+            }
+            order.pickupReadyAt = ready
+            if let label = order.pendingWindowLabel { order.pickupWindowLabel = label }
+            order.pendingReadyAt = nil
+            order.pendingWindowLabel = nil
+            order.detailsReviewedAt = nil
+            order.detailsChangedAt = Self.stamp()
+            notify(recipient: order.customerId, type: "window-accepted-\(Self.stamp())", orderId: order.id, title: "Pickup time agreed", body: "The runner agreed to the new pickup time. The delivery fee was not changed.", again: true)
+        }
+
+        if text(body["window_decision"], max: 20) == "decline" {
+            guard isDriver, order.pendingReadyAt != nil else {
+                throw APIError(message: "There isn't a new pickup time waiting for you.", code: "bad_request")
+            }
+            order.pendingReadyAt = nil
+            order.pendingWindowLabel = nil
+            notify(recipient: order.customerId, type: "window-declined-\(Self.stamp())", orderId: order.id, title: "Pickup time kept", body: "The runner kept the earlier pickup time.", again: true)
+        }
+
+        if text(body["place_decision"], max: 20) == "accept" {
+            guard isDriver, order.placeChangePending == true else {
+                throw APIError(message: "There isn't a branch change waiting for you.", code: "bad_request")
+            }
+            order.placeChangePending = false
+            order.detailsReviewedAt = nil
+            order.detailsChangedAt = Self.stamp()
+            notify(recipient: order.customerId, type: "place-accepted-\(Self.stamp())", orderId: order.id, title: "Branch change noted", body: "The runner kept the accepted delivery fee. Review the pickup details again before collection.", again: true)
+        }
+
+        if isDriver, body["purchase_actual_cents"] != nil {
+            guard order.isRunnerPurchase else {
+                throw APIError(message: "The customer pays the store. Add pickup confirmation instead of a merchandise charge.", code: "bad_request")
+            }
+            guard order.status == .accepted, order.personalItem != true else {
+                throw APIError(message: "Accept the request before recording a purchase.", code: "bad_request")
+            }
+            guard order.purchaseState != "placed" else {
+                throw APIError(message: "The purchase is already recorded.", code: "bad_request")
+            }
+            let actual = Int(Self.number(body["purchase_actual_cents"]) ?? -1)
+            guard actual >= 0 else { throw APIError(message: "Enter the actual merchandise total.", code: "bad_request") }
+            let approved = order.merchandiseCents ?? 0
+            order.restaurantOrderNumber = text(body["purchase_reference"], max: 60)
+            if actual > approved {
+                order.revisionMerchandiseCents = actual
+                order.purchaseState = "revision"
+                notify(recipient: order.customerId, type: "counteroffer", orderId: order.id, title: "Merchandise total changed", body: "The store total is higher than the screenshot. Approve it before the runner continues.")
+            } else {
+                order.actualMerchandiseCents = actual
+                order.purchaseState = "placed"
+                order.status = .restaurantConfirmed
+                order.restaurantOrderConfirmedAt = Self.stamp()
+                if actual < approved {
+                    postLedger(orderId: order.id, kind: "merchandise-refund", cents: approved - actual, key: "merchandise-refund:\(order.id)")
+                }
+                notify(recipient: order.customerId, type: "purchase", orderId: order.id, title: "Purchase placed", body: "The runner recorded a simulated store purchase. This is not a receipt from the merchant.")
+            }
+        }
+
+        if text(body["revision_decision"], max: 20) == "accept" {
+            guard isCustomer, order.purchaseState == "revision", let actual = order.revisionMerchandiseCents else {
+                throw APIError(message: "There isn't a new merchandise total waiting for you.", code: "bad_request")
+            }
+            let extra = actual - (order.merchandiseCents ?? 0)
+            if extra > 0 {
+                postLedger(orderId: order.id, kind: "merchandise-authorize", cents: extra, key: "merchandise-authorize-revision:\(order.id)")
+                postLedger(orderId: order.id, kind: "merchandise-capture", cents: extra, key: "merchandise-capture-revision:\(order.id)")
+            }
+            order.merchandiseCents = actual
+            order.actualMerchandiseCents = actual
+            order.revisionMerchandiseCents = nil
+            order.purchaseState = "placed"
+            order.status = .restaurantConfirmed
+            order.restaurantOrderConfirmedAt = Self.stamp()
+            notify(recipient: order.driverId, type: "counteroffer", orderId: order.id, title: "New merchandise total approved", body: "The customer approved the higher store total.")
+        }
+
+        if text(body["revision_decision"], max: 20) == "decline" {
+            guard isCustomer, order.purchaseState == "revision" else {
+                throw APIError(message: "There isn't a new merchandise total waiting for you.", code: "bad_request")
+            }
+            order.purchaseState = nil
+            order.revisionMerchandiseCents = nil
+            notify(recipient: order.driverId, type: "counteroffer", orderId: order.id, title: "New merchandise total declined", body: "Keep the approved total, or cancel before buying.")
         }
 
         if let status = text(body["status"], max: 40), status != order.status.rawValue {
@@ -920,9 +1100,23 @@ actor AppDatabase {
                 order.status = next
                 order.acceptedAt = stamp
                 if let cents = order.quoteCents {
-                    postLedger(orderId: order.id, kind: "capture", cents: cents, key: "capture:\(order.id)")
+                    postLedger(orderId: order.id, kind: "delivery-capture", cents: cents, key: "delivery-capture:\(order.id)")
                 }
-                notify(recipient: order.customerId, type: "accept", orderId: order.id, title: "Request accepted", body: "Your runner accepted the pickup.")
+                if order.isRunnerPurchase, let goods = order.merchandiseCents, goods > 0 {
+                    postLedger(orderId: order.id, kind: "merchandise-capture", cents: goods, key: "merchandise-capture:\(order.id)")
+                }
+                if order.usesCustomerHandoff && order.handoffSubmittedAt != nil {
+                    order.status = .restaurantConfirmed
+                    order.restaurantOrderConfirmedAt = stamp
+                    notify(recipient: order.customerId, type: "accept", orderId: order.id, title: "Request accepted", body: "Your runner accepted. The confirmation you already added is saved. A runner was not guaranteed until now.")
+                    notify(recipient: order.driverId, type: "handoff", orderId: order.id, title: "Review pickup details", body: "The customer submitted pickup confirmation.")
+                } else if order.orderingModel == "customer_paid" {
+                    notify(recipient: order.customerId, type: "accept", orderId: order.id, title: "Ready to place your order", body: "Order directly from the store, then add your pickup confirmation here.")
+                } else if order.orderingModel == "personal" {
+                    notify(recipient: order.customerId, type: "accept", orderId: order.id, title: "Request accepted", body: "Confirm the item and contact will be ready during the agreed window.")
+                } else {
+                    notify(recipient: order.customerId, type: "accept", orderId: order.id, title: "Request accepted", body: "Your runner accepted the pickup.")
+                }
             case (.requested, .declined, true, _):
                 guard let reason = text(body["decline_reason"], max: 160) else {
                     throw APIError(message: "Add a short reason for declining.", code: "bad_request")
@@ -930,16 +1124,31 @@ actor AppDatabase {
                 order.status = next
                 order.declinedAt = stamp
                 order.declineReason = reason
-                postLedger(orderId: order.id, kind: "release", cents: order.quoteCents ?? 0, key: "release:\(order.id)")
+                releaseBoth(order)
                 notify(recipient: order.customerId, type: "decline", orderId: order.id, title: "Request declined", body: reason)
-            case (.accepted, .restaurantConfirmed, true, _), (.accepted, .restaurantConfirmed, _, true):
-                guard order.pickupName != nil else {
-                    throw APIError(message: "Add a pickup reference before confirming.", code: "bad_request")
+            case (.accepted, .restaurantConfirmed, true, _):
+                if order.merchandiseCents != nil && order.purchaseState != "placed" {
+                    throw APIError(message: "Record the store purchase before pickup. Accepting the request does not place the order.", code: "bad_request")
                 }
                 if order.pickupReadyAt == nil { order.pickupReadyAt = stamp }
                 order.status = next
                 order.restaurantOrderConfirmedAt = stamp
+                if order.personalItem == true { order.purchaseState = "arranged" }
             case (.restaurantConfirmed, .pickedUp, true, _):
+                if order.isRunnerPurchase && order.purchaseState != "placed" {
+                    throw APIError(message: "Record the store purchase before marking it picked up.", code: "bad_request")
+                }
+                if order.usesCustomerHandoff {
+                    guard order.handoffComplete, !order.detailsNeedReview else {
+                        throw APIError(message: "Review the pickup details before collecting.", code: "bad_request")
+                    }
+                    guard order.pendingReadyAt == nil, order.placeChangePending != true else {
+                        throw APIError(message: "Agree on the changed time or branch before pickup.", code: "bad_request")
+                    }
+                    guard flag(body["collection_confirmed"]) == true else {
+                        throw APIError(message: "Confirm the reference and the described items match what you are collecting.", code: "bad_request")
+                    }
+                }
                 order.status = next
                 order.pickedUpAt = stamp
             case (.pickedUp, .onTheWay, true, _):
@@ -967,21 +1176,45 @@ actor AppDatabase {
                 if let cents = order.runnerShareCents {
                     postLedger(orderId: order.id, kind: "earning", cents: cents, key: "earning:\(order.id)")
                 }
+                let delivery = order.quoteCents ?? 0
+                let share = order.runnerShareCents ?? 0
+                if delivery > share {
+                    postLedger(orderId: order.id, kind: "platform-share", cents: delivery - share, key: "platform-share:\(order.id)")
+                }
+                if order.isRunnerPurchase, let goods = order.actualMerchandiseCents ?? order.merchandiseCents, goods > 0 {
+                    postLedger(orderId: order.id, kind: "merchandise-reimburse", cents: goods, key: "merchandise-reimburse:\(order.id)")
+                }
                 notify(recipient: order.customerId, type: "delivery", orderId: order.id, title: "Delivered", body: "The pickup was marked delivered.")
-            case (.requested, .cancelled, _, true), (.accepted, .cancelled, _, true), (.restaurantConfirmed, .cancelled, _, true),
-                 (.accepted, .cancelled, true, _), (.restaurantConfirmed, .cancelled, true, _):
+            case (.requested, .cancelled, _, true), (.accepted, .cancelled, _, true), (.accepted, .cancelled, true, _):
+                guard order.purchaseState != "placed" else {
+                    throw APIError(message: "The purchase is already recorded. Open support. Home Run can't promise a merchant refund.", code: "bad_request")
+                }
                 let effect = DemoRules.cancellationEffect(status: order.status)
                 order.status = next
                 order.cancelledAt = stamp
                 order.cancelledBy = user.id
                 if effect == "release" {
-                    postLedger(orderId: order.id, kind: "release", cents: order.quoteCents ?? 0, key: "release:\(order.id)")
-                } else if effect == "refund", let cents = order.quoteCents {
-                    postLedger(orderId: order.id, kind: "refund", cents: cents, key: "refund:\(order.id)")
-                    postLedger(orderId: order.id, kind: "earning-reversal", cents: order.runnerShareCents ?? 0, key: "reversal:\(order.id)")
+                    releaseBoth(order)
+                } else if effect == "refund" {
+                    refundUnpurchased(order)
                 }
                 let other = user.id == order.customerId ? order.driverId : order.customerId
-                notify(recipient: other, type: "cancellation", orderId: order.id, title: "Pickup cancelled", body: "The delivery fee simulation was updated.")
+                notify(recipient: other, type: "cancellation", orderId: order.id, title: "Pickup cancelled", body: order.personalItem == true ? "The personal-item pickup was cancelled." : "The simulated merchandise and delivery amounts were updated.")
+            case (.restaurantConfirmed, .cancelled, _, true), (.restaurantConfirmed, .cancelled, true, _):
+                if order.isRunnerPurchase {
+                    throw APIError(message: "The purchase is already recorded. Open support. Home Run can't promise a merchant refund.", code: "bad_request")
+                }
+                order.status = next
+                order.cancelledAt = stamp
+                order.cancelledBy = user.id
+                refundUnpurchased(order)
+                let other = user.id == order.customerId ? order.driverId : order.customerId
+                let note = order.orderingModel == "personal"
+                    ? "The personal-item pickup was cancelled before collection. The simulated delivery fee was refunded."
+                    : "The simulated delivery fee was refunded. Money paid to the store is not refunded by Home Run."
+                notify(recipient: other, type: "cancellation", orderId: order.id, title: "Pickup cancelled", body: note)
+            case (.pickedUp, .cancelled, _, _), (.onTheWay, .cancelled, _, _), (.arriving, .cancelled, _, _):
+                throw APIError(message: "After collection, open support. Home Run can't cancel this automatically.", code: "bad_request")
             default:
                 throw APIError(message: "Invalid status change from \(order.status.rawValue) to \(status) for this account.", code: "forbidden")
             }
@@ -1060,6 +1293,203 @@ actor AppDatabase {
         try save()
     }
 
+    private func storeHandoff(_ order: inout Order, body: [String: Any], trip: Trip?, creating: Bool) throws {
+        if let details = text(body["request_text"], max: 800) {
+            order.itemSummary = details
+        }
+        guard !(order.itemSummary ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw APIError(message: "Add pickup details.", code: "bad_request")
+        }
+        if order.orderingModel == "personal" {
+            guard flag(body["ready_confirmed"]) == true else {
+                throw APIError(message: "Confirm the item and contact will be ready during the window.", code: "bad_request")
+            }
+            if let contact = text(body["contact_label"], max: 80) { order.contactLabel = contact }
+            if let access = text(body["access_instructions"], max: 500) { order.accessInstructions = access }
+            guard order.contactLabel != nil else {
+                throw APIError(message: "Add who will meet the runner.", code: "bad_request")
+            }
+        } else {
+            guard let name = text(body["pickup_name"], max: 80) else {
+                throw APIError(message: "Add the name on the order.", code: "bad_request")
+            }
+            let missing = flag(body["reference_missing"]) == true
+            let number = text(body["restaurant_order_number"], max: 60)
+            guard missing || number != nil else {
+                throw APIError(message: "Add the order number, or say the merchant did not provide one.", code: "bad_request")
+            }
+            order.pickupName = name
+            order.referenceMissing = missing
+            order.restaurantOrderNumber = missing ? nil : number
+            order.pickupCode = text(body["pickup_code"], max: 40)
+        }
+        let window = text(body["pickup_window"], max: 120)
+        let ready = text(body["pickup_ready_at"], max: 40)
+        guard window != nil || ready != nil || order.pickupWindowLabel != nil || order.pickupReadyAt != nil else {
+            throw APIError(message: "Add the pickup time.", code: "bad_request")
+        }
+        if let ready {
+            guard let when = Self.parse(ready) else {
+                throw APIError(message: "That pickup time could not be read.", code: "bad_request")
+            }
+            if let departure = trip.flatMap({ Self.parse($0.departureAt) }), when > departure {
+                throw APIError(message: "That pickup time is after this trip leaves.", code: "bad_request")
+            }
+            if !creating, order.status != .requested, let existing = order.pickupReadyAt, let old = Self.parse(existing), abs(old.timeIntervalSince(when)) > 15 * 60 {
+                order.pendingReadyAt = ready
+                order.pendingWindowLabel = window ?? order.pickupWindowLabel
+                notify(recipient: order.driverId, type: "window-\(Self.stamp())", orderId: order.id, title: "Pickup time changed", body: "Agree to the new pickup time before collecting. The delivery fee stays the same until you do.", again: true)
+            } else {
+                order.pickupReadyAt = ready
+            }
+        }
+        if let window, order.pendingReadyAt == nil { order.pickupWindowLabel = window }
+        if let instructions = text(body["pickup_instructions"], max: 500) { order.pickupInstructions = instructions }
+        if let access = text(body["access_instructions"], max: 500) { order.accessInstructions = access }
+        if let branch = text(body["branch_note"], max: 160), !creating, order.status != .requested {
+            order.pendingRestaurantName = branch
+            order.placeChangePending = true
+            notify(recipient: order.driverId, type: "branch-\(Self.stamp())", orderId: order.id, title: "Branch change requested", body: "The customer asked for a different branch. The accepted delivery fee stays until you agree.", again: true)
+        }
+        if flag(body["remove_screenshot"]) == true {
+            order.screenshotName = nil
+        } else if let encoded = text(body["screenshot_base64"], max: 12_000_000) {
+            order.screenshotName = try storeScreenshot(encoded, orderId: order.id)
+        }
+        let reviewed = order.detailsReviewedAt != nil && order.pendingReadyAt == nil
+        order.handoffSubmittedAt = Self.stamp()
+        if !creating, order.status == .accepted || order.status == .restaurantConfirmed {
+            if order.pendingReadyAt == nil {
+                order.status = .restaurantConfirmed
+                order.restaurantOrderConfirmedAt = order.restaurantOrderConfirmedAt ?? Self.stamp()
+            }
+            if reviewed {
+                order.detailsReviewedAt = nil
+                order.detailsChangedAt = Self.stamp()
+                notify(recipient: order.driverId, type: "handoff-changed-\(Self.stamp())", orderId: order.id, title: "Pickup details changed", body: "Review the updated confirmation before collecting.", again: true)
+            } else if order.pendingReadyAt == nil {
+                notify(recipient: order.driverId, type: "handoff", orderId: order.id, title: "Review pickup details", body: "The customer submitted pickup confirmation.")
+            }
+        }
+    }
+
+    private func remindMissingHandoff(for user: StoredUser) -> Bool {
+        let before = db.notices?.count ?? 0
+        for order in db.orders where order.customerId == user.id && order.usesCustomerHandoff && order.status == .accepted && !order.handoffComplete {
+            guard let trip = db.trips.first(where: { $0.id == order.tripId }), let departure = Self.parse(trip.departureAt) else { continue }
+            guard departure.timeIntervalSince(DemoClock.now) < 3 * 3600 else { continue }
+            notify(recipient: user.id, type: "handoff-reminder", orderId: order.id, title: "Pickup details still needed", body: "Add the confirmation before this trip leaves, or cancel the delivery. This order is not ready for pickup.")
+        }
+        return (db.notices?.count ?? 0) != before
+    }
+
+    private func releaseBoth(_ order: Order) {
+        postLedger(orderId: order.id, kind: "delivery-release", cents: order.quoteCents ?? 0, key: "delivery-release:\(order.id)")
+        if let goods = order.merchandiseCents, goods > 0 {
+            postLedger(orderId: order.id, kind: "merchandise-release", cents: goods, key: "merchandise-release:\(order.id)")
+        }
+    }
+
+    private func refundUnpurchased(_ order: Order) {
+        postLedger(orderId: order.id, kind: "delivery-refund", cents: order.quoteCents ?? 0, key: "delivery-refund:\(order.id)")
+        if let goods = order.merchandiseCents, goods > 0 {
+            postLedger(orderId: order.id, kind: "merchandise-refund", cents: goods, key: "merchandise-refund:\(order.id)")
+        }
+    }
+
+    private func storeScreenshot(_ encoded: String, orderId: String) throws -> String {
+        guard let data = Data(base64Encoded: encoded), !data.isEmpty else {
+            throw APIError(message: "That screenshot could not be read.", code: "bad_request")
+        }
+        let jpeg = try normalizeJPEG(data)
+        let name = "\(orderId).jpg"
+        let folder = try attachmentsFolder()
+        try jpeg.write(to: folder.appendingPathComponent(name), options: .atomic)
+        return name
+    }
+
+    private func normalizeJPEG(_ data: Data) throws -> Data {
+        guard data.count <= 8_000_000 else {
+            throw APIError(message: "Use a screenshot under 8 MB.", code: "bad_request")
+        }
+        guard let image = UIImage(data: data), image.size.width > 0, image.size.height > 0 else {
+            throw APIError(message: "Use a photo of the basket or item list.", code: "bad_request")
+        }
+        let maxSide: CGFloat = 1600
+        let scale = min(1, maxSide / max(image.size.width, image.size.height))
+        let size = CGSize(width: max(1, image.size.width * scale), height: max(1, image.size.height * scale))
+        let rendered = UIGraphicsImageRenderer(size: size).jpegData(withCompressionQuality: 0.72) { _ in
+            image.draw(in: CGRect(origin: .zero, size: size))
+        }
+        guard rendered.count <= 1_500_000 else {
+            throw APIError(message: "That screenshot is still too large after resizing.", code: "bad_request")
+        }
+        return rendered
+    }
+
+    private func attachmentsFolder() throws -> URL {
+        let folder = storageURL.deletingLastPathComponent().appendingPathComponent("attachments", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        return folder
+    }
+
+    private func attachment(for user: StoredUser, orderId: String) throws -> AttachmentPayload {
+        guard let order = db.orders.first(where: { $0.id == orderId && ($0.customerId == user.id || $0.driverId == user.id || user.id == "demo-taylor") }) else {
+            throw APIError(message: "That screenshot isn't available.", code: "not_found")
+        }
+        guard let name = order.screenshotName else { return AttachmentPayload(jpegBase64: nil) }
+        let url = storageURL.deletingLastPathComponent().appendingPathComponent("attachments").appendingPathComponent(name)
+        guard let data = try? Data(contentsOf: url) else { return AttachmentPayload(jpegBase64: nil) }
+        return AttachmentPayload(jpegBase64: data.base64EncodedString())
+    }
+
+    private func draftURL(userId: String) -> URL {
+        storageURL.deletingLastPathComponent().appendingPathComponent("draft-\(userId).json")
+    }
+
+    private func loadDraft(userId: String) -> ComposerDraft {
+        let empty = ComposerDraft(tripId: "", placeId: "", requestText: "", merchandise: "", substitution: "ask", instructions: "", personal: false, bulky: false, hasScreenshot: false)
+        guard let data = try? Data(contentsOf: draftURL(userId: userId)), var draft = try? JSONDecoder().decode(ComposerDraft.self, from: data) else {
+            return empty
+        }
+        let imageURL = storageURL.deletingLastPathComponent().appendingPathComponent("attachments/draft-\(userId).jpg")
+        if let bytes = try? Data(contentsOf: imageURL), !bytes.isEmpty {
+            draft.hasScreenshot = true
+            draft.screenshotBase64 = bytes.base64EncodedString()
+        }
+        return draft
+    }
+
+    private func saveDraft(user: StoredUser, body: [String: Any]) throws {
+        var draft = ComposerDraft(
+            tripId: text(body["trip_id"], max: 80) ?? "",
+            placeId: text(body["place_id"], max: 200) ?? "",
+            requestText: text(body["request_text"], max: 500) ?? "",
+            merchandise: text(body["merchandise"], max: 20) ?? "",
+            substitution: text(body["substitution"], max: 20) ?? "ask",
+            instructions: text(body["instructions"], max: 500) ?? "",
+            personal: flag(body["personal"]) == true,
+            bulky: flag(body["bulky"]) == true,
+            hasScreenshot: false
+        )
+        let imageURL = storageURL.deletingLastPathComponent().appendingPathComponent("attachments/draft-\(user.id).jpg")
+        if flag(body["remove_screenshot"]) == true {
+            try? FileManager.default.removeItem(at: imageURL)
+        } else if let encoded = text(body["screenshot_base64"], max: 12_000_000) {
+            draft.hasScreenshot = true
+            _ = try storeScreenshot(encoded, orderId: "draft-\(user.id)")
+        } else if FileManager.default.fileExists(atPath: imageURL.path) {
+            draft.hasScreenshot = true
+        }
+        let data = try JSONEncoder().encode(draft)
+        try data.write(to: draftURL(userId: user.id), options: .atomic)
+    }
+
+    private func removeDraft(userId: String) {
+        try? FileManager.default.removeItem(at: draftURL(userId: userId))
+        try? FileManager.default.removeItem(at: storageURL.deletingLastPathComponent().appendingPathComponent("attachments/draft-\(userId).jpg"))
+    }
+
     private func postLedger(orderId: String, kind: String, cents: Int, key: String) {
         var entries = db.ledger ?? []
         guard !entries.contains(where: { $0.operationKey == key }) else { return }
@@ -1067,9 +1497,9 @@ actor AppDatabase {
         db.ledger = entries
     }
 
-    private func notify(recipient: String, type: String, orderId: String?, title: String, body: String) {
+    private func notify(recipient: String, type: String, orderId: String?, title: String, body: String, again: Bool = false) {
         if db.users.first(where: { $0.id == recipient })?.notify == false { return }
-        let key = "\(type)|\(recipient)|\(orderId ?? title)"
+        let key = again ? "\(type)|\(recipient)|\(orderId ?? title)|\(Self.stamp())" : "\(type)|\(recipient)|\(orderId ?? title)"
         var notices = db.notices ?? []
         guard !notices.contains(where: { $0.dedupeKey == key }) else { return }
         notices.append(AppNotice(id: UUID().uuidString, recipientId: recipient, type: type, orderId: orderId, tripId: nil, title: title, body: body, createdAt: Self.stamp(), readAt: nil, dedupeKey: key))
@@ -1228,16 +1658,29 @@ actor AppDatabase {
                 departureAt: Self.plain.string(from: past), maxOrders: 4, notes: "Completed demo history.", status: "completed",
                 createdAt: Self.stamp(), driver: nil, stops: nil, activeOrders: nil
             ))
-            db.orders.append(Self.historyOrder(id: "demo-order-delivered", trip: "demo-trip-jordan-done", status: .delivered, fee: 8, share: 640))
+            var delivered = Self.historyOrder(id: "demo-order-delivered", trip: "demo-trip-jordan-done", status: .delivered, fee: 8, share: 640)
+            delivered.orderingModel = "runner_purchase"
+            delivered.merchandiseCents = 2_400
+            delivered.actualMerchandiseCents = 2_400
+            delivered.purchaseState = "placed"
+            delivered.substitution = "ask"
+            delivered.itemSummary = "Rice bowl. Sample basket — not a real order."
+            delivered.screenshotName = "demo-order-delivered.jpg"
+            db.orders.append(delivered)
+            if let folder = try? attachmentsFolder(), let jpeg = try? sampleBasketJPEG() {
+                try? jpeg.write(to: folder.appendingPathComponent("demo-order-delivered.jpg"), options: .atomic)
+            }
             var entries = db.ledger ?? []
             entries.append(contentsOf: [
                 LedgerEntry(id: "demo-ledger-auth", operationKey: "authorize:demo-order-delivered", orderId: "demo-order-delivered", kind: "authorize", cents: 800, createdAt: Self.stamp()),
                 LedgerEntry(id: "demo-ledger-capture", operationKey: "capture:demo-order-delivered", orderId: "demo-order-delivered", kind: "capture", cents: 800, createdAt: Self.stamp()),
                 LedgerEntry(id: "demo-ledger-earn", operationKey: "earning:demo-order-delivered", orderId: "demo-order-delivered", kind: "earning", cents: 640, createdAt: Self.stamp()),
+                LedgerEntry(id: "demo-ledger-goods", operationKey: "merchandise-reimburse:demo-order-delivered", orderId: "demo-order-delivered", kind: "merchandise-reimburse", cents: 2_400, createdAt: Self.stamp()),
+                LedgerEntry(id: "demo-ledger-platform", operationKey: "platform-share:demo-order-delivered", orderId: "demo-order-delivered", kind: "platform-share", cents: 160, createdAt: Self.stamp()),
             ])
             db.ledger = entries
             var messages = db.messages ?? []
-            messages.append(OrderMessage(id: "demo-message-1", orderId: "demo-order-delivered", senderId: "demo-maya", body: "The order is under Anish Koduri. Pickup reference HR-DEMO-104.", createdAt: Self.stamp()))
+            messages.append(OrderMessage(id: "demo-message-1", orderId: "demo-order-delivered", senderId: "demo-maya", body: "Sample basket for the rice bowl. This is not a real customer screenshot.", createdAt: Self.stamp()))
             messages.append(OrderMessage(id: "demo-message-2", orderId: "demo-order-delivered", senderId: "demo-jordan", body: "Got it. I’ll message when I leave the stop.", createdAt: Self.stamp()))
             db.messages = messages
             changed = true
@@ -1279,21 +1722,21 @@ actor AppDatabase {
             fixture = "standard"; samples = false; city = "Houston"; clearTerms = false
             title = "From Houston, with dinner"
             pointBayou("demo-trip-jordan")
-            instructions = "Stay as Anish Koduri. Discover is Houston. Choose Bayou Bowl Kitchen, a light confirmed item, and Campus Library Plaza. The labeled route is within 1 mile and 5 minutes, so the fee is $8. Submit. Profile → Demo people → Jordan Ellis. Accept, confirm the pickup reference, pick up, start travel, and mark arriving. Switch back to Anish, read the code, then Jordan completes it. Earnings shows $6.40. Nothing is charged."
+            instructions = "Stay as Anish Koduri. Discover is Houston. Choose Bayou Bowl Kitchen, Restaurant or store, and Campus Library Plaza. In Pickup details, describe the bags. Wait for Jordan to accept before ordering. The labeled route is within 1 mile and 5 minutes, so the delivery fee is $8. Submit. Profile → Demo people → Jordan Ellis and accept. Switch back to Anish. Order and pay the store yourself, then add the name, reference, and pickup time. Jordan taps Review pickup details, then Details received, confirms the bags match, and continues through the code. Earnings shows $6.40. Nothing is charged."
         case 2:
             fixture = "detour"; samples = false; city = "Dallas"; clearTerms = false
             title = "Worth the detour"
-            instructions = "Stay as Anish Koduri. The pickup city is Dallas and Avery Patel's trip is open. Choose a Dallas place. The labeled fixture is 6 extra miles and 12 extra minutes: $15.50, runner share $12.40. Submit, switch to Avery, accept, and complete with the code."
+            instructions = "Stay as Anish Koduri. The pickup city is Dallas and Avery Patel's trip is open. Choose a Dallas place and describe the order in Pickup details. The labeled fixture is 6 extra miles and 12 extra minutes: delivery fee $15.50, runner earning $12.40. That earning is only the delivery fee. Submit, switch to Avery, accept, then as Anish add the store confirmation. Avery reviews it and completes the delivery with the code."
         case 3:
             fixture = "standard"; samples = false; city = "Austin"; clearTerms = false
             title = "A little heavier"
-            instructions = "Stay as Anish Koduri. Austin uses Sam Rivera's trip, which allows 60 lb per item and 75 lb total. A 35 lb item on the standard route quotes $15 and a $12 share. Leave weight blank, or enter more than 50 lb, and the price stays in review rather than $0. Sam can counteroffer $18. Approve it as Anish. The simulated share becomes $14.40. A heavier offer still cannot pass Sam's limits."
+            instructions = "Stay as Anish Koduri. Austin uses Sam Rivera's trip. For a restaurant order, turn on About 35 lb. The delivery fee becomes $15 and the runner earning is $12. Or choose Home or personal item and leave the weight blank: the price stays in review rather than $0. Sam can counteroffer $18 on the delivery fee. Approve it as Anish. The simulated earning becomes $14.40. A heavier offer still cannot pass Sam's limits."
         case 4:
             fixture = "standard"; samples = false; city = "Houston"; clearTerms = false
             title = "One stop, two orders"
             pointBayou("demo-trip-jordan")
             if let index = db.trips.firstIndex(where: { $0.id == "demo-trip-jordan" }) { db.trips[index].maxOrders = 4 }
-            instructions = "Anish Koduri requests Bayou Bowl Kitchen on Jordan's Houston trip. Profile → Demo people → Alex Morgan and request the same place and meetup. The orders stay separate, each with its own code. The $2 shared-stop discount is defined and off. Jordan accepts both."
+            instructions = "Anish Koduri requests Bayou Bowl Kitchen and describes the bags. Profile → Demo people → Alex Morgan and request the same place and meetup. The orders stay separate, each with its own confirmation and code. The $2 shared-stop discount is defined and off. Jordan accepts both. Each customer then pays the store and adds pickup confirmation."
         case 5:
             fixture = ""; samples = false; city = "San Antonio"; clearTerms = false
             title = "Catch the next trip"
@@ -1302,18 +1745,18 @@ actor AppDatabase {
             fixture = "standard"; samples = false; city = "Houston"; clearTerms = false
             title = "Plans change"
             stageOrder(id: "demo-order-plans", tripId: "demo-trip-jordan", customerId: "demo-maya", placeId: "sample:bayou-bowl", name: "Bayou Bowl Kitchen", lat: 29.743, lng: -95.369, status: .accepted)
-            instructions = "Profile → Demo people → Jordan Ellis. My trips → the Houston trip → Cancel trip. Anish Koduri's accepted, not-yet-picked-up order is refunded in the simulated ledger and both people get a notice. The pickup is not reassigned."
+            instructions = "Profile → Demo people → Jordan Ellis. My trips → the Houston trip → Cancel trip. The order is accepted and the customer has not added store confirmation, so the simulated delivery fee is refunded. Money paid to a store is not refunded by Home Run. Both people get a notice. The pickup is not reassigned."
         case 7:
             fixture = "standard"; samples = false; city = "Houston"; clearTerms = false
             title = "The last spot"
             if let index = db.trips.firstIndex(where: { $0.id == "demo-trip-jordan" }) { db.trips[index].maxOrders = 1 }
             stageOrder(id: "demo-order-race-maya", tripId: "demo-trip-jordan", customerId: "demo-maya", placeId: "sample:bayou-bowl", name: "Bayou Bowl Kitchen", lat: 29.743, lng: -95.369, status: .requested)
             stageOrder(id: "demo-order-race-alex", tripId: "demo-trip-jordan", customerId: "demo-alex", placeId: "sample:bayou-coffee", name: "Bayou Coffee Counter", lat: 29.752, lng: -95.358, status: .requested)
-            instructions = "Profile → Demo people → Jordan Ellis. Requests lists Anish Koduri and Alex Morgan. Accept one. Accepting the other fails because the only spot is taken, and that fee is not captured."
+            instructions = "Profile → Demo people → Jordan Ellis. Requests lists Anish Koduri and Alex Morgan, each with pickup details. Accept one. Accepting the other fails because the only spot is taken, and that delivery fee is not captured."
         case 8:
             fixture = ""; samples = false; city = "Houston"; clearTerms = false
             title = "Make it right"
-            instructions = "Anish Koduri → Orders → the delivered Bayou Bowl history. Get help and submit a case. Profile → Demo people → Taylor Brooks. Support → In review, then Resolve. Resolve does not refund. Simulate full refund does, and the order stays delivered."
+            instructions = "Anish Koduri → Orders → the delivered Bayou Bowl history. That older record is marked runner purchase and keeps its separate merchandise reimbursement. Get help and submit a case. Profile → Demo people → Taylor Brooks. Support → In review, then Resolve. Resolve does not refund. Simulate full refund returns the delivery fee only, and the order stays delivered. New requests do not create a merchandise charge."
         case 9:
             fixture = ""; samples = false; city = "Houston"; clearTerms = true
             title = "Welcome, Aggie"
@@ -1321,7 +1764,7 @@ actor AppDatabase {
         case 10:
             fixture = "review"; samples = true; city = "Houston"; clearTerms = false
             title = "Offline, still presentable"
-            instructions = "Discover uses the labeled sample catalog even if a Places key is set. A request stays in price review instead of inventing a fee. Use Retry on the quote, or Reset demo records to restore the baseline trips. Account 1 is left alone."
+            instructions = "Discover uses the labeled sample catalog even if a Places key is set. A request stays in price review instead of inventing a delivery fee. Nothing is captured while the quote needs review. Use Reset demo records to restore the baseline trips. Account 1 is left alone."
         default:
             throw APIError(message: "Choose a scenario from 1 to 10.", code: "bad_request")
         }
@@ -1355,13 +1798,33 @@ actor AppDatabase {
             quoteState: "quoted", confirmationPin: nil, pinAttempts: 0, pickupName: "HR-SCENARIO", restaurantOrderNumber: nil,
             pickupReadyAt: nil, pickupInstructions: nil, status: status, cancelledBy: nil,
             acceptedAt: status == .accepted ? stamp : nil, restaurantOrderConfirmedAt: nil, pickedUpAt: nil, onTheWayAt: nil,
-            deliveredAt: nil, declinedAt: nil, cancelledAt: nil, createdAt: stamp, updatedAt: stamp
+            deliveredAt: nil, declinedAt: nil, cancelledAt: nil, createdAt: stamp, updatedAt: stamp,
+            trip: nil, driver: nil, customer: nil
         )
-        db.orders.append(order)
-        postLedger(orderId: id, kind: "authorize", cents: 800, key: "authorize:\(id)")
+        var stored = order
+        stored.orderingModel = "customer_paid"
+        stored.itemSummary = "Two takeout bags: one rice bowl and one sandwich. Keep the drink upright."
+        stored.merchandiseCents = nil
+        stored.pickupName = nil
+        db.orders.append(stored)
+        postLedger(orderId: id, kind: "delivery-authorize", cents: 800, key: "delivery-authorize:\(id)")
         if status == .accepted {
-            postLedger(orderId: id, kind: "capture", cents: 800, key: "capture:\(id)")
+            postLedger(orderId: id, kind: "delivery-capture", cents: 800, key: "delivery-capture:\(id)")
         }
+    }
+
+    private func sampleBasketJPEG() throws -> Data {
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 640, height: 360))
+        let jpeg = renderer.jpegData(withCompressionQuality: 0.8) { context in
+            UIColor(red: 0.96, green: 0.93, blue: 0.88, alpha: 1).setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 640, height: 360))
+            let copy = "Sample basket\nNot a real customer order\nRice bowl    $24.00" as NSString
+            copy.draw(in: CGRect(x: 28, y: 36, width: 580, height: 280), withAttributes: [
+                .font: UIFont.systemFont(ofSize: 28, weight: .semibold),
+                .foregroundColor: UIColor(red: 0.31, green: 0.08, blue: 0.13, alpha: 1),
+            ])
+        }
+        return jpeg
     }
 
     private func publishMatchingTrip(city: String) throws {

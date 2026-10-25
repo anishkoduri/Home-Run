@@ -22,6 +22,23 @@ struct AppNotice: Codable, Identifiable, Equatable {
     var dedupeKey: String
 }
 
+struct AttachmentPayload: Codable, Equatable {
+    var jpegBase64: String?
+}
+
+struct ComposerDraft: Codable, Equatable {
+    var tripId: String
+    var placeId: String
+    var requestText: String
+    var merchandise: String
+    var substitution: String
+    var instructions: String
+    var personal: Bool
+    var bulky: Bool
+    var hasScreenshot: Bool
+    var screenshotBase64: String? = nil
+}
+
 struct ScenarioPrep: Codable, Equatable {
     var scenario: Int
     var title: String
@@ -88,12 +105,21 @@ enum DemoRules {
         PricingPolicy.halfUp(Decimal(cents) * Decimal(PricingPolicy.runnerBasisPoints) / 10_000)
     }
 
-    /// Before pickup, cancellation refunds the captured delivery fee once. After pickup, only support can refund, and only a delivered order.
-    static func cancellationEffect(status: OrderStatus) -> String {
+    /// Delivery-fee effect only. Runner-purchase history keeps the older support stop once a purchase was recorded.
+    static func cancellationEffect(status: OrderStatus, orderingModel: String? = nil) -> String {
+        if orderingModel == "customer_paid" || orderingModel == "personal" {
+            switch status {
+            case .requested: return "release"
+            case .accepted, .restaurantConfirmed: return "refund"
+            case .pickedUp, .onTheWay, .arriving: return "support"
+            case .delivered: return "support-delivered"
+            default: return "none"
+            }
+        }
         switch status {
         case .requested: return "release"
-        case .accepted, .restaurantConfirmed: return "refund"
-        case .pickedUp, .onTheWay, .arriving: return "support"
+        case .accepted: return "refund"
+        case .restaurantConfirmed, .pickedUp, .onTheWay, .arriving: return "support"
         case .delivered: return "support-delivered"
         default: return "none"
         }

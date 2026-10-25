@@ -97,7 +97,7 @@ struct TripEditTests {
             let _: Order = try await send(db, "orders", method: "PATCH", token: jordan.token, query: ["id": second.id], body: ["status": "accepted"])
         }
         let ledger: LedgerList = try await send(db, "ledger", token: jordan.token)
-        let captures = ledger.entries.filter { $0.kind == "capture" && pending.map(\.id).contains($0.orderId) }
+        let captures = ledger.entries.filter { $0.kind == "delivery-capture" && pending.map(\.id).contains($0.orderId) }
         #expect(captures.count == 1)
 
         let plans: ScenarioPrep = try await send(db, "demo-scenario", method: "POST", token: maya.token, body: ["scenario": 6])
@@ -107,7 +107,8 @@ struct TripEditTests {
         let cancelled = try #require(customer.first { $0.id == "demo-order-plans" })
         #expect(cancelled.status == .cancelled)
         let refunds: LedgerList = try await send(db, "ledger", token: maya.token, query: ["order": cancelled.id])
-        #expect(refunds.entries.contains { $0.kind == "refund" })
+        #expect(refunds.entries.contains { $0.kind == "delivery-refund" && $0.cents == 800 })
+        #expect(!refunds.entries.contains { $0.kind == "merchandise-refund" })
 
         let made: ScenarioPrep = try await send(db, "demo-scenario", method: "POST", token: maya.token, body: ["scenario": 8])
         #expect(made.instructions.contains("Taylor Brooks"))

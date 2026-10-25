@@ -6,11 +6,11 @@ enum OrderStatus: String, Codable, CaseIterable {
 
     var label: String {
         switch self {
-        case .requested: return "Waiting for driver"
-        case .accepted: return "Driver accepted"
-        case .restaurantConfirmed: return "Restaurant order confirmed"
+        case .requested: return "Awaiting runner"
+        case .accepted: return "Runner accepted"
+        case .restaurantConfirmed: return "Pickup details ready"
         case .pickedUp: return "Picked up"
-        case .onTheWay: return "On the way"
+        case .onTheWay: return "En route"
         case .arriving: return "Arriving"
         case .delivered: return "Delivered"
         case .declined: return "Declined"
@@ -34,16 +34,16 @@ enum OrderStatus: String, Codable, CaseIterable {
 
     var driverNext: (OrderStatus, String)? {
         switch self {
+        case .accepted: return nil
         case .restaurantConfirmed: return (.pickedUp, "Mark picked up")
         case .pickedUp: return (.onTheWay, "Start travel")
         case .onTheWay: return (.arriving, "I'm arriving")
-        case .accepted: return (.restaurantConfirmed, "Confirm pickup")
         default: return nil
         }
     }
 
-    var customerCanCancel: Bool { self == .requested || self == .accepted || self == .restaurantConfirmed }
-    var driverCanCancel: Bool { self == .accepted || self == .restaurantConfirmed }
+    var customerCanCancel: Bool { self == .requested || self == .accepted }
+    var driverCanCancel: Bool { self == .accepted }
 }
 
 struct SessionUser: Codable, Equatable {
@@ -164,6 +164,31 @@ struct Order: Codable, Identifiable, Equatable {
     var previousQuoteCents: Int? = nil
     var declineReason: String? = nil
     var lines: [OrderLine]? = nil
+    var merchandiseCents: Int? = nil
+    var substitution: String? = nil
+    var personalItem: Bool? = nil
+    var purchaseState: String? = nil
+    var actualMerchandiseCents: Int? = nil
+    var revisionMerchandiseCents: Int? = nil
+    var screenshotName: String? = nil
+    /// customer_paid, personal, or runner_purchase. Older merchandise ledgers stay runner_purchase.
+    var orderingModel: String? = nil
+    var alreadyOrdered: Bool? = nil
+    var handoffSubmittedAt: String? = nil
+    var detailsReviewedAt: String? = nil
+    var detailsChangedAt: String? = nil
+    var referenceMissing: Bool? = nil
+    var pickupCode: String? = nil
+    var contactLabel: String? = nil
+    var accessInstructions: String? = nil
+    var pickupWindowLabel: String? = nil
+    var pendingWindowLabel: String? = nil
+    var pendingReadyAt: String? = nil
+    var pendingRestaurantName: String? = nil
+    var placeChangePending: Bool? = nil
+    var itemQuantity: String? = nil
+    var fragile: Bool? = nil
+    var bulkyItem: Bool? = nil
     var confirmationPin: String?
     var pinAttempts: Int?
     var pickupName: String?
@@ -184,6 +209,74 @@ struct Order: Codable, Identifiable, Equatable {
     var trip: Trip?
     var driver: Profile?
     var customer: Profile?
+}
+
+extension Order {
+    var isRunnerPurchase: Bool {
+        orderingModel == "runner_purchase" || (orderingModel == nil && merchandiseCents != nil)
+    }
+
+    var usesCustomerHandoff: Bool {
+        orderingModel == "customer_paid" || orderingModel == "personal"
+    }
+
+    var isPersonalPickup: Bool { orderingModel == "personal" }
+
+    var handoffComplete: Bool { handoffSubmittedAt != nil }
+
+    var needsHandoffForm: Bool {
+        guard usesCustomerHandoff, !handoffComplete else { return false }
+        if isPersonalPickup { return status == .accepted }
+        return status == .requested || status == .accepted
+    }
+
+    var canEditHandoff: Bool {
+        usesCustomerHandoff && handoffComplete && (status == .accepted || status == .restaurantConfirmed)
+    }
+
+    var detailsNeedReview: Bool {
+        guard handoffComplete else { return false }
+        guard let reviewed = detailsReviewedAt else { return true }
+        guard let changed = detailsChangedAt else { return false }
+        return changed > reviewed
+    }
+
+    var progressTitle: String {
+        if isRunnerPurchase {
+            if status == .accepted && purchaseState != "placed" { return "Accepted — purchase not placed" }
+            if purchaseState == "revision" { return "Merchandise total changed" }
+            if status == .restaurantConfirmed { return "Purchase placed" }
+            return status.label
+        }
+        switch status {
+        case .requested: return "Awaiting runner"
+        case .accepted: return handoffComplete ? "Pickup details ready" : "Awaiting pickup details"
+        case .restaurantConfirmed:
+            if isPersonalPickup && detailsNeedReview { return "Pickup arranged" }
+            if detailsNeedReview { return "Pickup details ready" }
+            return "Runner reviewed details"
+        case .onTheWay: return "En route"
+        default: return status.label
+        }
+    }
+
+    var customerMayCancel: Bool {
+        if isRunnerPurchase { return status == .requested || status == .accepted }
+        return status == .requested || status == .accepted || status == .restaurantConfirmed
+    }
+
+    var driverMayCancel: Bool {
+        if isRunnerPurchase { return status == .accepted && purchaseState != "placed" }
+        return status == .accepted || status == .restaurantConfirmed
+    }
+
+    var driverAction: (OrderStatus, String)? {
+        if usesCustomerHandoff, status == .restaurantConfirmed {
+            guard !detailsNeedReview, placeChangePending != true, pendingReadyAt == nil else { return nil }
+            return (.pickedUp, "Mark picked up")
+        }
+        return status.driverNext
+    }
 }
 
 struct AttentionRow: Codable {

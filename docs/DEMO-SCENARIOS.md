@@ -7,14 +7,14 @@ Payments, payouts, and tracking stay simulated. Google map, live search, photos,
 ## Five-minute walkthrough
 
 1. Open the app. Read “By Aggies, for Aggies.” Accept the unchecked demo terms only after opening them. Say this is a student demo, not a university service, and that no card is charged.
-2. Home shows trips to College Station. Discover: confirm the pickup city, search a place, open a trip, enter an item and weight, keep Campus Library Plaza, and submit. The stored quote comes from `PricingPolicy`.
-3. Profile → Demo people → Jordan Ellis. Requests shows the same order. Accept, confirm pickup, mark picked up, start travel. Switch back to Anish Koduri, read the code, switch to Jordan, and complete delivery. Earnings shows the simulated share.
+2. Home shows trips to College Station. Discover: confirm the pickup city, search a place, choose Restaurant or store, write Pickup details, keep Campus Library Plaza, and submit. The stored quote is the delivery fee from `PricingPolicy`. Wait for the runner before ordering unless you already paid the store.
+3. Profile → Demo people → Jordan Ellis. Requests shows the same order and the same pickup details. Accept. Switch back to Anish Koduri, pay the store outside the app, and add the name, reference, and pickup time. Jordan reviews the details, confirms the bags match, then marks picked up and starts travel. Switch back for the code, then Jordan completes delivery. Earnings shows the simulated delivery share only.
 4. For the detour, use a Dallas request whose extra distance and time price to $15.50. For a custom price, Jordan sends a counteroffer and the customer approves it. Profile → Demo controls can publish a San Antonio trip after a saved request, or cancel a trip before pickup so the ledger refunds.
 5. Earnings → Simulate payout. It is labeled demo and is not a bank transfer. Demo controls → Reset demo records restores the fictional baseline and leaves Account 1 alone.
 
 ## Scenarios
 
-1. **From Houston, with dinner.** Anish Koduri, Jordan’s Houston trip, a light confirmed item, Campus Library Plaza. A route inside 1 mile and 5 minutes quotes $8 and a $6.40 simulated share. Submit, accept, pickup, PIN, history.
+1. **From Houston, with dinner.** Anish Koduri, Jordan’s Houston trip, Bayou Bowl Kitchen, Pickup details, Campus Library Plaza. A route inside 1 mile and 5 minutes quotes an $8 delivery fee and a $6.40 simulated earning. The customer pays the store after acceptance, then adds confirmation. Jordan reviews it before pickup.
 2. **Worth the detour.** Dallas, 6 extra miles and 12 extra minutes. Quote $15.50, share $12.40.
 3. **A little heavier.** Austin, 35 lb on a standard route quotes $15 / $12. Unknown weight or over 50 lb stays in review and is never $0. Sam’s trip allows a 60 lb item and 75 lb total; a counteroffer still cannot pass those limits. An $18 approved counteroffer records a $14.40 share.
 4. **One stop, two orders.** Anish and Alex can request the same trip. Each order has its own code. The shared-stop discount of $2 is defined and switched off.
@@ -35,7 +35,7 @@ Payments, payouts, and tracking stay simulated. Google map, live search, photos,
 | Notifications bell | Home, runner header, Profile | Opens the in-app inbox |
 | Decline / Counter | Runner request | Reason required; counteroffer is $1–$250 and waits for the customer |
 | Approve price / Keep earlier terms | Customer order | Captures the approved total once, or restores the earlier quote |
-| Cancel delivery | Order, before pickup | Confirmation states release or full refund |
+| Cancel delivery | Order, before collection | Releases or refunds the simulated delivery fee. Store money is not refunded by Home Run. |
 | Get help | Order, after pickup or delivery | Opens a support case |
 | Report a delay | Runner delivery | One in-app notice |
 | Repeat weekly | My trips | Draft copies for the next 28 days, same template is not duplicated |

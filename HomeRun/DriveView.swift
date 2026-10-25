@@ -98,13 +98,21 @@ struct DriveView: View {
                             .pickerStyle(.segmented)
                             Text("Still out").font(Theme.text(.caption, weight: .semibold)).foregroundStyle(Theme.muted)
                             Text(Fees.money(pending.reduce(0) { $0 + ($1.deliveryFee ?? 0) })).font(Theme.price(.title2)).foregroundStyle(Theme.maroon)
-                            Text("Delivered").font(Theme.text(.caption, weight: .semibold)).foregroundStyle(Theme.muted)
+                            Text("Delivered earning").font(Theme.text(.caption, weight: .semibold)).foregroundStyle(Theme.muted)
                             Text(Fees.money(delivered.reduce(0) { $0 + share($1) })).font(Theme.price(.title2)).foregroundStyle(Theme.maroon)
+                            Text("Earlier merchandise reimbursement").font(Theme.text(.caption, weight: .semibold)).foregroundStyle(Theme.muted)
+                            Text(Fees.money(Double(reimbursedInPeriod) / 100)).font(Theme.price(.title3)).foregroundStyle(Theme.ink)
                             Text("Simulated paid").font(Theme.text(.caption, weight: .semibold)).foregroundStyle(Theme.muted)
                             Text(Fees.money(Double(paidInPeriod) / 100)).font(Theme.price(.title3)).foregroundStyle(Theme.ink)
                             ForEach(ledger.filter { $0.kind == "earning" && inPeriod($0.createdAt) }) { entry in
                                 NavigationLink(value: entry.orderId) {
-                                    Text("Earning \(Fees.money(Double(entry.cents) / 100))")
+                                    Text("Delivery earning \(Fees.money(Double(entry.cents) / 100))")
+                                        .font(Theme.text(.caption))
+                                }
+                            }
+                            ForEach(ledger.filter { $0.kind == "merchandise-reimburse" && inPeriod($0.createdAt) }) { entry in
+                                NavigationLink(value: entry.orderId) {
+                                    Text("Reimbursement \(Fees.money(Double(entry.cents) / 100))")
                                         .font(Theme.text(.caption))
                                 }
                             }
@@ -186,7 +194,7 @@ struct DriveView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(order.customer?.displayName ?? "Customer").fontWeight(.bold)
             Text(order.restaurantName)
-            Text("\(Format.minutes(order.detourMinutes)) · \(Fees.money(order.deliveryFee))")
+            Text(requestMoney(order))
                 .font(Theme.price(.subheadline))
                 .foregroundStyle(Theme.maroon)
             HStack {
@@ -207,15 +215,16 @@ struct DriveView: View {
                     Text(order.restaurantName).fontWeight(.bold).foregroundStyle(Theme.ink)
                     Text("\(order.customer?.displayName ?? "") · \(order.destinationLabel)")
                         .font(Theme.text(.caption)).foregroundStyle(Theme.muted)
-                    if let name = order.pickupName {
-                        Text("Pickup: \(name)\(order.restaurantOrderNumber.map { " · #\($0)" } ?? "")")
-                            .font(Theme.text(.caption))
-                    } else {
-                        Text("Waiting for the customer's restaurant order.").font(Theme.text(.caption)).foregroundStyle(Theme.coral)
-                    }
+                    Text(purchaseCaption(order))
+                        .font(Theme.text(.caption))
+                        .foregroundStyle(order.purchaseState == "placed" ? Theme.muted : Theme.coral)
                 }
             }
-            if order.status == .arriving {
+            if order.usesCustomerHandoff, order.detailsNeedReview {
+                NavigationLink("Review pickup details", value: order.id).fontWeight(.bold)
+            } else if let next = order.driverAction, next.0 == .pickedUp, order.usesCustomerHandoff {
+                NavigationLink("Open collection checklist", value: order.id).fontWeight(.bold)
+            } else if order.status == .arriving {
                 Text("Open the delivery and enter the customer's code.")
                     .font(Theme.text(.caption)).foregroundStyle(Theme.muted)
             } else if let next = order.status.driverNext {
@@ -313,6 +322,27 @@ struct DriveView: View {
 
     private static func iso(_ date: Date) -> String {
         ISO8601DateFormatter().string(from: date)
+    }
+
+    private var reimbursedInPeriod: Int {
+        ledger.filter { $0.kind == "merchandise-reimburse" && inPeriod($0.createdAt) }.reduce(0) { $0 + $1.cents }
+    }
+
+    private func requestMoney(_ order: Order) -> String {
+        let delivery = Fees.money(order.deliveryFee)
+        if order.isRunnerPurchase, let goods = order.merchandiseCents {
+            return "\(Format.minutes(order.detourMinutes)) · Earlier merchandise \(Fees.money(Double(goods) / 100)) · Delivery \(delivery)"
+        }
+        return "\(Format.minutes(order.detourMinutes)) · Delivery \(delivery)"
+    }
+
+    private func purchaseCaption(_ order: Order) -> String {
+        if order.isPersonalPickup { return order.handoffComplete ? "Pickup arranged" : "Home pickup. Details still needed." }
+        if order.isRunnerPurchase { return order.purchaseState == "placed" ? "Earlier purchase recorded" : "Earlier runner-purchase record" }
+        if order.detailsNeedReview { return "Customer submitted confirmation" }
+        if order.handoffComplete { return "Runner reviewed details" }
+        if order.status == .accepted { return "Awaiting pickup details" }
+        return "Awaiting runner"
     }
 
     private func share(_ order: Order) -> Double {
