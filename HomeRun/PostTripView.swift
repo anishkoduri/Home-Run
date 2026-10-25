@@ -3,7 +3,6 @@ import SwiftUI
 struct PostTripView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.onTheRoad) private var onTheRoad
     @State private var origin = ""
     @State private var day = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
     @State private var time = Calendar.current.date(bySettingHour: 17, minute: 0, second: 0, of: Date()) ?? Date()
@@ -16,38 +15,70 @@ struct PostTripView: View {
     @State private var error: String?
 
     var body: some View {
-        Form {
-            Picker("Driving from", selection: $origin) {
-                Text("Choose a city").tag("")
-                ForEach(Places.origins) { Text($0.name).tag($0.name) }
-            }
-            LabeledContent("To") { Text(Places.destination.name) }
-            DatePicker("Departure date", selection: $day, displayedComponents: .date)
-            DatePicker("Departure time", selection: $time, displayedComponents: .hourAndMinute)
-            Stepper("Max orders: \(maxOrders)", value: $maxOrders, in: 1 ... 6)
-            Section("Planned stops") {
-                ForEach(stops) { stop in
-                    Text(stop.name)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Route").font(Theme.display(.headline))
+                    Picker("Driving from", selection: $origin) {
+                        Text("Choose a city").tag("")
+                        ForEach(Places.origins) { Text($0.name).tag($0.name) }
+                    }
+                    .accessibilityLabel("Driving from")
+                    LabeledContent("To") { Text(Places.destination.name).font(Theme.text(.body, weight: .semibold)) }
+                    DatePicker("Departure date", selection: $day, displayedComponents: .date)
+                    DatePicker("Departure time", selection: $time, displayedComponents: .hourAndMinute)
+                    Stepper("Max orders: \(maxOrders)", value: $maxOrders, in: 1 ... 6)
                 }
-                .onDelete { stops.remove(atOffsets: $0) }
-                TextField("Search a restaurant", text: $stopQuery)
-                Button("Find stop") { Task { await findStop() } }.disabled(origin.isEmpty || stops.count >= 3)
-                ForEach(stopResults) { place in
-                    Button(place.name) {
-                        if !stops.contains(where: { $0.placeId == place.placeId }) { stops.append(place) }
-                        stopResults = []
-                        stopQuery = ""
+                .padding(16)
+                .sketchPanel()
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Planned stops").font(Theme.display(.headline))
+                    ForEach(stops) { stop in
+                        HStack {
+                            Text(stop.name).font(Theme.text(.body))
+                            Spacer()
+                            Button("Remove") { stops.removeAll { $0.placeId == stop.placeId } }
+                                .font(Theme.text(.caption, weight: .semibold))
+                                .foregroundStyle(Theme.bad)
+                        }
+                    }
+                    TextField("Search a restaurant", text: $stopQuery)
+                        .padding(12)
+                        .frame(minHeight: 44)
+                        .sketchPanel()
+                    Button("Find stop") { Task { await findStop() } }
+                        .font(Theme.text(.body, weight: .semibold))
+                        .frame(minHeight: 44)
+                        .disabled(origin.isEmpty || stops.count >= 3)
+                    ForEach(stopResults) { place in
+                        Button(place.name) {
+                            if !stops.contains(where: { $0.placeId == place.placeId }) { stops.append(place) }
+                            stopResults = []
+                            stopQuery = ""
+                        }
+                        .font(Theme.text(.body, weight: .semibold))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(minHeight: 44)
                     }
                 }
+                .padding(16)
+                .sketchPanel()
+
+                TextField("Notes for customers", text: $notes, axis: .vertical)
+                    .padding(12)
+                    .frame(minHeight: 44)
+                    .sketchPanel()
+                if let error { ErrorBanner(message: error) }
+                PrimaryButton(title: "Publish trip", busy: busy) { publish() }
             }
-            TextField("Notes for customers", text: $notes, axis: .vertical)
-            if let error { ErrorBanner(message: error) }
-            PrimaryButton(title: "Publish trip", busy: busy) { publish() }
+            .padding(20)
         }
         .navigationTitle("Post a trip")
-        .scrollContentBackground(.hidden)
-        .background(onTheRoad ? Theme.road : Theme.cream)
-        .toolbarColorScheme(onTheRoad ? .dark : .light, for: .navigationBar)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .navigationBar)
+        .homeRunPage(road: false)
+        .toolbarColorScheme(.light, for: .navigationBar)
     }
 
     private func findStop() async {

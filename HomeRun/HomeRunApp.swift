@@ -4,6 +4,20 @@ import SwiftUI
 struct HomeRunApp: App {
     @State private var model = AppModel()
 
+    init() {
+        let display = UIFont(name: "Graduate", size: 18) ?? .systemFont(ofSize: 18, weight: .bold)
+        let body = UIFont(name: "Source Sans 3", size: 17) ?? .systemFont(ofSize: 17)
+        let caption = UIFont(name: "Source Sans 3", size: 13) ?? .systemFont(ofSize: 13, weight: .semibold)
+        UINavigationBar.appearance().titleTextAttributes = [.font: display]
+        UINavigationBar.appearance().largeTitleTextAttributes = [.font: UIFont(name: "Graduate", size: 32) ?? display]
+        UIBarButtonItem.appearance().setTitleTextAttributes([.font: body], for: .normal)
+        UIBarButtonItem.appearance().setTitleTextAttributes([.font: body], for: .highlighted)
+        UISegmentedControl.appearance().setTitleTextAttributes([.font: caption], for: .normal)
+        UISegmentedControl.appearance().setTitleTextAttributes([.font: caption], for: .selected)
+        UITableView.appearance().backgroundColor = .clear
+        UICollectionView.appearance().backgroundColor = .clear
+    }
+
     var body: some Scene {
         WindowGroup {
             RootView()
@@ -77,7 +91,7 @@ struct RootView: View {
                 }
                 .padding(24)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Theme.cream)
+                .homeRunPage(road: false)
             } else {
                 MainTabs()
             }
@@ -146,7 +160,7 @@ private struct OrderShell: View {
                                 .minimumScaleFactor(0.7)
                         }
                         if model.driveBadge > 0 {
-                            Text("\(model.driveBadge)").font(.caption2.weight(.bold))
+                            Text("\(model.driveBadge)").font(Theme.text(.caption2, weight: .bold))
                         }
                     }
                     .foregroundStyle(.white)
@@ -162,10 +176,12 @@ private struct OrderShell: View {
             .padding(.horizontal, 10)
             .padding(.top, 8)
             .padding(.bottom, 6)
-            .background(Theme.surface)
+            .background {
+                Theme.surface.overlay(PaperFiber(tone: Theme.maroon))
+            }
             .overlay(alignment: .top) { Hairline() }
         }
-        .background(Theme.cream)
+        .homeRunPage(road: false)
         .tint(Theme.maroon)
         .alert("This account is for ordering", isPresented: $orderOnly) {
             Button("OK", role: .cancel) {}
@@ -186,7 +202,7 @@ private struct OrderShell: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                 }
-                if badge > 0 { Text("\(badge)").font(.caption2.weight(.bold)) }
+                if badge > 0 { Text("\(badge)").font(Theme.text(.caption2, weight: .bold)) }
             }
             .foregroundStyle(tab == value ? Theme.maroon : Theme.muted)
             .frame(maxWidth: .infinity, minHeight: 44)
@@ -220,8 +236,11 @@ private struct DriveShell: View {
                                     .minimumScaleFactor(0.7)
                             }
                         }
-                        .foregroundStyle(section == item ? .white : Theme.roadMuted)
+                        .foregroundStyle(section == item ? Theme.cream : Theme.roadMuted)
                         .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                        .background(section == item ? Theme.maroon : Color.clear)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     }
                     .buttonStyle(.plain)
                 }
@@ -250,10 +269,14 @@ private struct DriveShell: View {
             .padding(.horizontal, 10)
             .padding(.top, 10)
             .padding(.bottom, 6)
-            .background(Theme.road)
+            .background {
+                Theme.road.overlay(PaperFiber())
+            }
             .overlay(alignment: .top) { Rectangle().fill(Color.white.opacity(0.16)).frame(height: 1) }
         }
-        .background(Theme.road)
+        .background {
+            Theme.road.overlay(PaperFiber())
+        }
         .tint(.white)
         .environment(\.onTheRoad, true)
         .environment(\.colorScheme, .dark)

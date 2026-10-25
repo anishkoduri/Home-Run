@@ -25,7 +25,7 @@ struct OrderDetailView: View {
                 ProgressView("Loading order…").padding(40)
             }
         }
-        .background(Theme.cream)
+        .homeRunPage(road: false)
         .navigationTitle(order?.restaurantName ?? "Order")
         .navigationBarTitleDisplayMode(.inline)
         .task { await watch { await load() } }
@@ -38,8 +38,8 @@ struct OrderDetailView: View {
             HStack {
                 VStack(alignment: .leading) {
                     Text(role == "driver" ? "Delivery for \(order.customer?.displayName ?? "customer")" : "Order \(Format.shortId(order.id))")
-                        .font(.caption).foregroundStyle(Theme.muted)
-                    Text(order.restaurantName).font(.title2.weight(.bold)).foregroundStyle(Theme.maroon)
+                        .font(Theme.text(.caption)).foregroundStyle(Theme.muted)
+                    Text(order.restaurantName).font(Theme.display(.title2)).foregroundStyle(Theme.maroon)
                     Text("\(order.trip?.originCity ?? "") → \(order.destinationLabel)").foregroundStyle(Theme.muted)
                 }
                 Spacer()
@@ -59,7 +59,7 @@ struct OrderDetailView: View {
                 Text(routePath == nil
                      ? "Straight line between the posted stops. A road route was not available, and this is not live tracking."
                      : "Road route from the routing service. This map is not live tracking.")
-                    .font(.caption)
+                    .font(Theme.text(.caption))
                     .foregroundStyle(Theme.muted)
             }
         }
@@ -89,10 +89,19 @@ struct OrderDetailView: View {
                 Text(order.status == .accepted ? "Place and pay for the restaurant order, then add pickup details." : "Update pickup details.")
                     .foregroundStyle(Theme.muted)
                 Toggle("I placed and paid for my order", isOn: $ordered)
-                TextField("Name on the order", text: $pickupName).textFieldStyle(.roundedBorder)
-                TextField("Order number (optional)", text: $orderNumber).textFieldStyle(.roundedBorder)
+                TextField("Name on the order", text: $pickupName)
+                    .padding(12)
+                    .frame(minHeight: 44)
+                    .sketchPanel()
+                TextField("Order number (optional)", text: $orderNumber)
+                    .padding(12)
+                    .frame(minHeight: 44)
+                    .sketchPanel()
                 DatePicker("Ready", selection: $ready)
-                TextField("Pickup instructions", text: $instructions, axis: .vertical).textFieldStyle(.roundedBorder)
+                TextField("Pickup instructions", text: $instructions, axis: .vertical)
+                    .padding(12)
+                    .frame(minHeight: 44)
+                    .sketchPanel()
                 PrimaryButton(title: order.status == .restaurantConfirmed ? "Save pickup details" : "Confirm restaurant order", busy: busy) {
                     Task { await confirm(order) }
                 }
@@ -127,7 +136,7 @@ struct OrderDetailView: View {
             ("Delivered", order.deliveredAt),
         ]
         return VStack(alignment: .leading, spacing: 12) {
-            Text("Progress").font(.title3.weight(.bold))
+            Text("Progress").font(Theme.display(.title3))
             ForEach(steps, id: \.0) { step in
                 HStack(alignment: .top, spacing: 10) {
                     Image(systemName: step.1 == nil ? "circle" : "checkmark.circle.fill")
@@ -135,34 +144,35 @@ struct OrderDetailView: View {
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(step.0)
-                        Text(step.1.map(Format.dayTime) ?? "Not yet").font(.subheadline).foregroundStyle(Theme.muted)
+                        Text(step.1.map(Format.dayTime) ?? "Not yet").font(Theme.text(.subheadline)).foregroundStyle(Theme.muted)
                     }
                 }
                 .accessibilityElement(children: .combine)
             }
-            Hairline()
         }
+        .padding(16)
+        .sketchPanel()
     }
 
     private func facts(_ order: Order, role: String) -> some View {
         Card {
-            Text("Restaurant").font(.headline)
+            Text("Restaurant").font(Theme.text(.headline, weight: .semibold))
             Text(order.restaurantAddress ?? "")
             if let website = restaurantURL(order.restaurantWebsite) {
                 Link("Restaurant website", destination: website).fontWeight(.bold)
             }
-            Text("Handoff").font(.headline).padding(.top, 6)
+            Text("Handoff").font(Theme.text(.headline, weight: .semibold)).padding(.top, 6)
             Text(order.destinationLabel)
             if let arrival = order.estimatedArrivalAt {
-                Text("Estimated around \(Format.time(arrival))").font(.caption).foregroundStyle(Theme.muted)
+                Text("Estimated around \(Format.time(arrival))").font(Theme.text(.caption)).foregroundStyle(Theme.muted)
             }
-            Text("Fee").font(.headline).padding(.top, 6)
-            Text(Fees.money(order.deliveryFee)).font(.title3.weight(.bold)).foregroundStyle(Theme.maroon)
-            Text(Fees.formula).font(.caption).foregroundStyle(Theme.muted)
+            Text("Fee").font(Theme.text(.headline, weight: .semibold)).padding(.top, 6)
+            Text(Fees.money(order.deliveryFee)).font(Theme.display(.title3)).foregroundStyle(Theme.maroon)
+            Text(Fees.formula).font(Theme.text(.caption)).foregroundStyle(Theme.muted)
             if role == "customer", let handle = order.driver?.paymentHandle {
-                Text("Send to \(handle)").font(.caption)
+                Text("Send to \(handle)").font(Theme.text(.caption))
             }
-            Text("Home Run doesn't process or verify payments.").font(.caption).foregroundStyle(Theme.muted)
+            Text("Home Run doesn't process or verify payments.").font(Theme.text(.caption)).foregroundStyle(Theme.muted)
         }
     }
 
@@ -247,7 +257,8 @@ struct RouteMap: View {
             }
         }
         .frame(height: 220)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .clipShape(InkCard())
+        .overlay(InkCard().stroke(Theme.ink.opacity(0.28), lineWidth: 1.3))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Map of the delivery route")
     }

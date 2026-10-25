@@ -18,13 +18,12 @@ struct AuthView: View {
                 HStack(alignment: .center, spacing: 14) {
                     Image("BrandMark")
                         .resizable()
-                        .scaledToFill()
-                        .frame(width: 64, height: 64)
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .scaledToFit()
+                        .frame(width: 84, height: 84)
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Home Run")
-                            .font(.headline.weight(.bold))
+                            .font(Theme.display(.title2))
                             .foregroundStyle(.white)
                         Text(mode == .signIn ? "Sign in" : "Create an account")
                             .font(Theme.text(.subheadline))
@@ -32,11 +31,10 @@ struct AuthView: View {
                     }
                     Spacer()
                 }
-                .padding(20)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background {
-                    Theme.maroon.overlay(PaperFiber())
-                }
+                .background(Theme.maroon.ignoresSafeArea(edges: .top))
                 .padding(.horizontal, -24)
                 .padding(.top, -24)
 
@@ -49,7 +47,7 @@ struct AuthView: View {
 
                 if mode == .signUp {
                     field("Your name", text: $name)
-                    Text("What do you want to do?").font(.footnote.weight(.semibold)).foregroundStyle(Theme.muted)
+                    Text("What do you want to do?").font(Theme.text(.footnote, weight: .semibold)).foregroundStyle(Theme.muted)
                     ForEach(AccountUse.allCases) { option in
                         Button {
                             use = option
@@ -59,13 +57,12 @@ struct AuthView: View {
                                     .foregroundStyle(Theme.maroon)
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(option.title).fontWeight(.semibold).foregroundStyle(Theme.ink)
-                                    Text(option.detail).font(.caption).foregroundStyle(Theme.muted)
+                                    Text(option.detail).font(Theme.text(.caption)).foregroundStyle(Theme.muted)
                                 }
                                 Spacer()
                             }
                             .padding(12)
-                            .background(.white)
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                            .sketchPanel(ink: use == option ? Theme.maroon : Theme.ink.opacity(0.28))
                         }
                         .buttonStyle(.plain)
                     }
@@ -75,8 +72,8 @@ struct AuthView: View {
                     .keyboardType(.emailAddress)
                 SecureField("Password", text: $password)
                     .padding(12)
-                    .background(.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .frame(minHeight: 44)
+                    .sketchPanel()
                 if let error { ErrorBanner(message: error) }
                 PrimaryButton(title: mode == .signIn ? "Sign in" : "Create account", busy: busy) { submit() }
                 Button(mode == .signIn ? "Create an account" : "Sign in") {
@@ -86,21 +83,22 @@ struct AuthView: View {
                 .fontWeight(.bold)
                 .frame(maxWidth: .infinity)
                 Text("Student-run project. Not affiliated with any university. Accounts stay on this phone.")
-                    .font(.caption2)
+                    .font(Theme.text(.caption2))
                     .foregroundStyle(Theme.muted)
                     .frame(maxWidth: .infinity)
             }
             .padding(24)
         }
+        .homeRunPage(road: false)
     }
 
     private func field(_ title: String, text: Binding<String>) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title).font(.footnote.weight(.semibold)).foregroundStyle(Theme.muted)
+            Text(title).font(Theme.text(.footnote, weight: .semibold)).foregroundStyle(Theme.muted)
             TextField(title, text: text)
                 .padding(12)
-                .background(.white)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .frame(minHeight: 44)
+                .sketchPanel()
         }
     }
 

@@ -29,9 +29,16 @@ struct DriveView: View {
     var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Bring food").font(.subheadline.weight(.bold)).foregroundStyle(.white.opacity(0.72))
-                    Text(section.rawValue).font(Theme.display(.title)).foregroundStyle(Theme.cream)
+                HStack(alignment: .center) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Bring food").font(Theme.text(.subheadline, weight: .bold)).foregroundStyle(.white.opacity(0.72))
+                        Text(section.rawValue).font(Theme.display(.title)).foregroundStyle(Theme.cream)
+                    }
+                    Spacer(minLength: 8)
+                    NavigationLink("Post") { PostTripView() }
+                        .font(Theme.text(.headline, weight: .semibold))
+                        .foregroundStyle(Theme.cream)
+                        .frame(minHeight: 44)
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 8)
@@ -40,38 +47,39 @@ struct DriveView: View {
                     switch section {
                     case .requests:
                         let incoming = orders.filter { $0.status == .requested }
-                        if incoming.isEmpty { Text("No new requests.").foregroundStyle(Theme.roadMuted) }
+                        if incoming.isEmpty { roadEmpty("No new requests.") }
                         ForEach(incoming) { order in requestRow(order) }
                     case .deliveries:
                         let active = orders.filter { $0.status.isActiveDelivery }
-                        if active.isEmpty { Text("No active deliveries.").foregroundStyle(Theme.roadMuted) }
+                        if active.isEmpty { roadEmpty("No active deliveries.") }
                         ForEach(active) { order in deliveryRow(order) }
                     case .trips:
-                        if trips.isEmpty { Text("No trips yet.").foregroundStyle(Theme.roadMuted) }
+                        if trips.isEmpty { roadEmpty("No trips yet.") }
                         ForEach(trips) { trip in tripRow(trip) }
                     case .earnings:
                         let delivered = orders.filter { $0.status == .delivered }
                         let pending = orders.filter { $0.status.isActiveDelivery }
-                        Text("Active \(Fees.money(pending.reduce(0) { $0 + ($1.deliveryFee ?? 0) }))")
-                        Text("Delivered \(Fees.money(delivered.reduce(0) { $0 + ($1.deliveryFee ?? 0) }))")
-                        Text("Customers pay you directly. Home Run doesn't process payments.")
-                            .font(.caption).foregroundStyle(Theme.roadMuted)
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Active").font(Theme.text(.caption, weight: .semibold)).foregroundStyle(Theme.roadMuted)
+                            Text(Fees.money(pending.reduce(0) { $0 + ($1.deliveryFee ?? 0) })).font(Theme.display(.title2)).foregroundStyle(Theme.cream)
+                            Text("Delivered").font(Theme.text(.caption, weight: .semibold)).foregroundStyle(Theme.roadMuted)
+                            Text(Fees.money(delivered.reduce(0) { $0 + ($1.deliveryFee ?? 0) })).font(Theme.display(.title2)).foregroundStyle(Theme.cream)
+                            Text("Customers pay you directly. Home Run doesn't process payments.")
+                                .font(Theme.text(.caption)).foregroundStyle(Theme.roadMuted)
+                        }
+                        .padding(16)
+                        .sketchPanel(fill: Theme.roadSurface, ink: Theme.cream.opacity(0.35))
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
                     }
                 }
                 .scrollContentBackground(.hidden)
+                .listRowSeparator(.hidden)
             }
-            .background {
-                Theme.road.overlay(PaperFiber().opacity(0.45))
-            }
-            .navigationTitle("On the road")
+            .homeRunPage(road: true)
+            .toolbar(.hidden, for: .navigationBar)
             .toolbarBackground(Theme.road, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    NavigationLink("Post") { PostTripView() }
-                }
-            }
             .navigationDestination(for: String.self) { OrderDetailView(id: $0) }
             .refreshable { await load() }
             .task { await watch { await load() } }
@@ -104,7 +112,10 @@ struct DriveView: View {
                 Button("Accept") { Task { await set(order, .accepted) } }.fontWeight(.bold).disabled(busy)
             }
         }
-        .listRowBackground(Theme.roadSurface)
+        .padding(12)
+        .sketchPanel(fill: Theme.roadSurface, ink: Theme.cream.opacity(0.35))
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
     }
 
     private func deliveryRow(_ order: Order) -> some View {
@@ -113,12 +124,12 @@ struct DriveView: View {
                 VStack(alignment: .leading) {
                     Text(order.restaurantName).fontWeight(.bold).foregroundStyle(Theme.cream)
                     Text("\(order.customer?.displayName ?? "") · \(order.destinationLabel)")
-                        .font(.caption).foregroundStyle(Theme.roadMuted)
+                        .font(Theme.text(.caption)).foregroundStyle(Theme.roadMuted)
                     if let name = order.pickupName {
                         Text("Pickup: \(name)\(order.restaurantOrderNumber.map { " · #\($0)" } ?? "")")
-                            .font(.caption)
+                            .font(Theme.text(.caption))
                     } else {
-                        Text("Waiting for the customer's restaurant order.").font(.caption).foregroundStyle(Theme.coral)
+                        Text("Waiting for the customer's restaurant order.").font(Theme.text(.caption)).foregroundStyle(Theme.coral)
                     }
                 }
             }
@@ -126,20 +137,34 @@ struct DriveView: View {
                 Button(next.1) { Task { await set(order, next.0) } }.fontWeight(.bold).disabled(busy)
             }
         }
-        .listRowBackground(Theme.roadSurface)
+        .padding(12)
+        .sketchPanel(fill: Theme.roadSurface, ink: Theme.cream.opacity(0.35))
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
     }
 
     private func tripRow(_ trip: Trip) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             CityRoute(origin: trip.originCity, destination: trip.destinationCity, tint: .white)
             Text("\(Format.relative(trip.departureAt)) · \(trip.activeOrders ?? 0) of \(trip.maxOrders) spots")
-                .font(.caption).foregroundStyle(Theme.roadMuted)
-            Text(trip.status.capitalized).font(.caption)
+                .font(Theme.text(.caption)).foregroundStyle(Theme.roadMuted)
+            Text(trip.status.capitalized).font(Theme.text(.caption))
             if trip.status == "scheduled" {
                 Button("Cancel trip") { tripPendingCancel = trip }.foregroundStyle(Theme.bad)
             }
         }
-        .listRowBackground(Theme.roadSurface)
+        .padding(12)
+        .sketchPanel(fill: Theme.roadSurface, ink: Theme.cream.opacity(0.35))
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+    }
+
+    private func roadEmpty(_ title: String) -> some View {
+        HStack(spacing: 12) {
+            GroceryBagSketch(ink: Theme.cream.opacity(0.9))
+            Text(title).foregroundStyle(Theme.roadMuted)
+        }
+        .listRowBackground(Color.clear)
     }
 
     private func load() async {

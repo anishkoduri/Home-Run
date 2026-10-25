@@ -16,30 +16,42 @@ struct OrdersView: View {
                 .pickerStyle(.segmented)
                 .padding(.horizontal, 20)
                 if let error { ErrorBanner(message: error).padding(.horizontal, 20) }
+                if shown.isEmpty {
+                    EmptyState(
+                        title: past ? "No past orders." : "No active orders.",
+                        message: past ? "Finished orders show up here." : "Request a pickup from Home."
+                    )
+                    .padding(.horizontal, 20)
+                    Spacer(minLength: 0)
+                } else {
                 List(shown) { order in
                     NavigationLink(value: order.id) {
                         HStack(spacing: 12) {
                             PlacePlate(name: order.restaurantName)
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(order.restaurantName).font(.headline)
+                                Text(order.restaurantName).font(Theme.text(.headline, weight: .semibold))
                                 if let trip = order.trip {
                                     Text("\(trip.originCity) → \(order.destinationLabel)")
-                                        .font(.subheadline)
+                                        .font(Theme.text(.subheadline))
                                         .foregroundStyle(Theme.muted)
                                 }
                                 Text("\(Format.shortId(order.id)) · \(Fees.money(order.deliveryFee))")
-                                    .font(.subheadline.weight(.semibold))
+                                    .font(Theme.text(.subheadline, weight: .semibold))
                                     .foregroundStyle(Theme.ink)
                                 StatusPill(status: order.status)
                             }
                         }
-                        .padding(.vertical, 6)
+                        .padding(12)
+                        .sketchPanel()
                     }
-                    .listRowBackground(Theme.surface)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
                 }
                 .scrollContentBackground(.hidden)
+                .listRowSeparator(.hidden)
+                }
             }
-            .background(Theme.cream)
+            .homeRunPage(road: false)
             .navigationTitle("Orders")
             .navigationDestination(for: String.self) { OrderDetailView(id: $0) }
             .refreshable { await load() }

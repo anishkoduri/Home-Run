@@ -61,7 +61,7 @@ struct DiscoverView: View {
         ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     Text("Choose a place, then a trip.")
-                        .font(.subheadline)
+                        .font(Theme.text(.subheadline))
                         .foregroundStyle(Theme.muted)
                     HStack(spacing: 8) {
                         Menu {
@@ -70,7 +70,7 @@ struct DiscoverView: View {
                             }
                         } label: {
                             Text(city)
-                                .font(.subheadline.weight(.semibold))
+                                .font(Theme.text(.subheadline, weight: .semibold))
                                 .foregroundStyle(Theme.maroon)
                                 .lineLimit(1)
                                 .frame(minHeight: 44)
@@ -90,8 +90,10 @@ struct DiscoverView: View {
                         .sensoryFeedback(.selection, trigger: searching) { _, started in started }
                     }
                     .padding(.horizontal, 14)
+                    .padding(.vertical, 4)
                     .background(Theme.surface)
-                    .overlay(RoundedRectangle(cornerRadius: Theme.radiusControl, style: .continuous).stroke(Theme.line))
+                    .clipShape(InkCard())
+                    .overlay(InkCard().stroke(Theme.ink.opacity(0.28), lineWidth: 1.3))
                     if let error { ErrorBanner(message: error) }
                     if searching { ProgressView("Searching \(city)…") }
                     if restaurant == nil {
@@ -106,19 +108,19 @@ struct DiscoverView: View {
                                 HStack(spacing: 12) {
                                     PlacePlate(name: place.name)
                                     VStack(alignment: .leading, spacing: 4) {
-                                        Text(place.name).font(.headline).foregroundStyle(Theme.ink)
-                                        Text(place.address).font(.caption).foregroundStyle(Theme.muted)
+                                        Text(place.name).font(Theme.text(.headline, weight: .semibold)).foregroundStyle(Theme.ink)
+                                        Text(place.address).font(Theme.text(.caption)).foregroundStyle(Theme.muted)
                                         if let rating = place.rating {
                                             Text("\(rating, format: .number.precision(.fractionLength(1))) · \(place.ratingCount ?? 0) ratings")
-                                                .font(.caption.weight(.semibold))
+                                                .font(Theme.text(.caption, weight: .semibold))
                                                 .foregroundStyle(Theme.maroon)
                                         }
                                     }
                                     Spacer(minLength: 8)
                                     Image(systemName: "chevron.right").foregroundStyle(Theme.muted).accessibilityHidden(true)
                                 }
-                                .padding(.vertical, 12)
-                                .overlay(alignment: .bottom) { Hairline() }
+                                .padding(12)
+                                .sketchPanel()
                             }
                             .buttonStyle(PressStyle())
                             .accessibilityLabel("\(place.name), \(place.address)")
@@ -128,8 +130,8 @@ struct DiscoverView: View {
                             HStack(spacing: 12) {
                                 PlacePlate(name: restaurant.place.name)
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text(restaurant.place.name).font(.headline)
-                                    Text(restaurant.place.address).font(.caption).foregroundStyle(Theme.muted)
+                                    Text(restaurant.place.name).font(Theme.text(.headline, weight: .semibold))
+                                    Text(restaurant.place.address).font(Theme.text(.caption)).foregroundStyle(Theme.muted)
                                 }
                             }
                             if let website = restaurantURL(restaurant.place.website) {
@@ -138,7 +140,7 @@ struct DiscoverView: View {
                             }
                             Button("Change") { self.restaurant = nil }.fontWeight(.bold)
                         }
-                        Text("Handoff").font(.title3.weight(.bold))
+                        Text("Handoff").font(Theme.display(.title3))
                         Picker("Handoff", selection: $handoffMode) {
                             Text("Campus").tag("campus")
                             Text("Address").tag("address")
@@ -152,26 +154,28 @@ struct DiscoverView: View {
                                     HStack {
                                         VStack(alignment: .leading) {
                                             Text(point.label).fontWeight(.semibold)
-                                            Text(point.detail).font(.caption).foregroundStyle(Theme.muted)
+                                            Text(point.detail).font(Theme.text(.caption)).foregroundStyle(Theme.muted)
                                         }
                                         Spacer()
                                         if handoff.type == "campus" && handoff.label == point.label {
                                             Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.maroon)
                                         }
                                     }
+                                    .padding(12)
+                                    .sketchPanel(ink: handoff.type == "campus" && handoff.label == point.label ? Theme.maroon : Theme.ink.opacity(0.28))
                                 }
                                 .buttonStyle(.plain)
                                 .accessibilityLabel(point.label)
                             }
                         } else {
                             TextField("Street address in College Station", text: $addressQuery)
-                                .padding(10)
-                                .background(.white)
-                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                                .padding(12)
+                                .frame(minHeight: 44)
+                                .sketchPanel()
                             Button("Find address") { Task { await searchAddress() } }
                                 .fontWeight(.bold)
                             if handoff.type == "address" {
-                                Text("Delivering to \(handoff.label)").font(.caption).foregroundStyle(Theme.muted)
+                                Text("Delivering to \(handoff.label)").font(Theme.text(.caption)).foregroundStyle(Theme.muted)
                             }
                             ForEach(addressResults) { place in
                                 Button {
@@ -181,15 +185,15 @@ struct DiscoverView: View {
                                 } label: {
                                     VStack(alignment: .leading) {
                                         Text(place.name).fontWeight(.semibold)
-                                        Text(place.address).font(.caption).foregroundStyle(Theme.muted)
+                                        Text(place.address).font(Theme.text(.caption)).foregroundStyle(Theme.muted)
                                     }
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                 }
                                 .buttonStyle(.plain)
                             }
                         }
-                        Text("Drivers").font(.title3.weight(.bold))
-                        Text("Fee: \(Fees.formula).").font(.caption).foregroundStyle(Theme.muted)
+                        Text("Drivers").font(Theme.display(.title3))
+                        Text("Fee: \(Fees.formula).").font(Theme.text(.caption)).foregroundStyle(Theme.muted)
                         if ranked.isEmpty {
                             EmptyState(title: "No trips from \(city)", message: "No one has posted a drive from here yet.")
                         }
@@ -197,39 +201,39 @@ struct DiscoverView: View {
                             VStack(alignment: .leading, spacing: 8) {
                                 if row.trip.id == focusTripID {
                                     Text("Trip you opened")
-                                        .font(.caption.weight(.bold))
+                                        .font(Theme.text(.caption, weight: .bold))
                                         .foregroundStyle(Theme.maroon)
                                 }
                                 TripSummary(trip: row.trip)
                                 if row.own {
-                                    Text("This is your trip.").font(.caption).foregroundStyle(Theme.muted)
+                                    Text("This is your trip.").font(Theme.text(.caption)).foregroundStyle(Theme.muted)
                                 } else if let estimate = row.estimate {
                                     Text("\(Format.minutes(estimate.detourMinutes)) added · \(Fees.money(Fees.estimate(estimate.detourMinutes)))")
-                                        .font(.subheadline.weight(.bold)).foregroundStyle(Theme.maroon)
+                                        .font(Theme.text(.subheadline, weight: .bold)).foregroundStyle(Theme.maroon)
                                     if estimate.detourMinutes > 45 {
-                                        Text("Long detour. The driver may decline.").font(.caption).foregroundStyle(Theme.coral)
+                                        Text("Long detour. The driver may decline.").font(Theme.text(.caption)).foregroundStyle(Theme.coral)
                                     }
                                     if estimate.source == "straight_line" {
-                                        Text("Approximate · routing unavailable").font(.caption).foregroundStyle(Theme.muted)
+                                        Text("Approximate · routing unavailable").font(Theme.text(.caption)).foregroundStyle(Theme.muted)
                                     }
                                     Button("Request delivery") {
                                         request = RequestDraft(trip: row.trip, estimate: estimate, place: restaurant.place, source: restaurant.source, handoff: handoff)
                                     }
-                                    .font(.headline)
+                                    .font(Theme.text(.headline, weight: .semibold))
                                     .frame(minHeight: 44)
                                     .disabled((row.trip.activeOrders ?? 0) >= row.trip.maxOrders)
                                 } else {
                                     ProgressView("Calculating route…")
                                 }
                             }
-                            .padding(.vertical, 12)
-                            .overlay(alignment: .bottom) { Hairline() }
+                            .padding(12)
+                            .sketchPanel()
                         }
                     }
                 }
                 .padding(20)
             }
-            .background(Theme.cream)
+            .homeRunPage(road: false)
             .navigationTitle("Discover")
             .toolbar(.visible, for: .navigationBar)
             .toolbarColorScheme(.light, for: .navigationBar)
@@ -355,10 +359,10 @@ struct RequestSheet: View {
                         Text("Request stored")
                             .font(Theme.display(.title))
                             .foregroundStyle(Theme.maroon)
-                        Text(confirmed.restaurantName).font(.title3.weight(.bold))
+                        Text(confirmed.restaurantName).font(Theme.display(.title3))
                         StatusPill(status: confirmed.status)
                         Text("This is the status Home Run saved. The driver has not accepted it yet, and no payment was taken.")
-                            .font(.subheadline)
+                            .font(Theme.text(.subheadline))
                             .foregroundStyle(Theme.muted)
                             .fixedSize(horizontal: false, vertical: true)
                         PrimaryButton(title: "Done") { onDone(); dismiss() }
@@ -369,28 +373,27 @@ struct RequestSheet: View {
                         Text("Leaves \(Format.relative(draft.trip.departureAt))").foregroundStyle(Theme.muted)
                         Text("Handoff at \(draft.handoff.label)").foregroundStyle(Theme.muted)
                         Text("Added drive \(Format.minutes(draft.estimate.detourMinutes))")
-                        Text("Delivery fee \(Fees.money(Fees.estimate(draft.estimate.detourMinutes)))").font(.title3.weight(.bold))
+                        Text("Delivery fee \(Fees.money(Fees.estimate(draft.estimate.detourMinutes)))").font(Theme.display(.title3))
                         if let website = restaurantURL(draft.place.website) {
                             Link("Restaurant website", destination: website).fontWeight(.bold)
                         }
                         RouteMap(path: draft.estimate.withPath)
                         Text(draft.estimate.source == "straight_line" ? "Approximate path. Routing was unavailable." : "Road route from the routing service. Apple Maps provides this map.")
-                            .font(.caption)
+                            .font(Theme.text(.caption))
                             .foregroundStyle(Theme.muted)
                         TextField("Note for the driver", text: $note, axis: .vertical)
                             .lineLimit(3 ... 5)
                             .padding(12)
-                            .background(Theme.surface)
-                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.line))
+                            .sketchPanel()
                         Text("Don't order food yet. Wait for the driver to accept. Home Run doesn't process payments.")
-                            .font(.footnote).foregroundStyle(Theme.muted)
+                            .font(Theme.text(.footnote)).foregroundStyle(Theme.muted)
                         if let error { ErrorBanner(message: error) }
                         PrimaryButton(title: "Send request", busy: busy) { submit() }
                     }
                 }
                 .padding(20)
             }
-            .background(Theme.cream)
+            .homeRunPage(road: false)
             .animation(reduceMotion ? nil : .snappy(duration: 0.35), value: confirmed?.id)
             .sensoryFeedback(.success, trigger: confirmed?.id) { old, new in
                 old == nil && new != nil
