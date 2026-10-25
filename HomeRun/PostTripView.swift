@@ -81,9 +81,10 @@ struct PostTripView: View {
         .navigationTitle("Post a trip")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
-        .homeRunPage(road: false)
-        .background(Theme.cream.ignoresSafeArea())
-        .toolbarBackground(Theme.cream, for: .navigationBar)
+        .homeRunPage(road: true)
+        .environment(\.onTheRoad, true)
+        .background(Theme.runnerPaper.ignoresSafeArea())
+        .toolbarBackground(Theme.runnerPaper, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.light, for: .navigationBar)
     }

@@ -107,7 +107,10 @@ struct TripEditor: View {
                 }
                 .padding(20)
             }
-            .homeRunPage(road: false)
+            .homeRunPage(road: true)
+            .environment(\.onTheRoad, true)
+            .toolbarBackground(Theme.runnerPaper, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .navigationTitle(trip.templateId == nil ? "Edit trip" : "Edit this date")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }

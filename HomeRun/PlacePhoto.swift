@@ -22,8 +22,8 @@ struct PlacePhoto: View {
             }
         }
         .frame(width: side, height: side)
-        .clipShape(InkCard())
-        .overlay(InkCard().stroke(Theme.ink.opacity(0.55), lineWidth: 1.2))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.gold.opacity(0.85), lineWidth: 1.25))
         .accessibilityLabel(place.photoName == nil ? "No photo for \(place.name)" : "Photo of \(place.name)")
         .task(id: place.photoName) { await load() }
     }

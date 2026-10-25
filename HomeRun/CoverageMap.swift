@@ -39,7 +39,7 @@ struct CoverageMap: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Where we cover")
                 .font(Theme.section())
-                .foregroundStyle(Theme.ink)
+                .foregroundStyle(Theme.maroon)
             Map(position: .constant(.region(region))) {
                 ForEach(majorCities) { city in
                     Marker(city.name, systemImage: city.name == "College Station" ? "house.fill" : "mappin", coordinate: CLLocationCoordinate2D(latitude: city.lat, longitude: city.lng))
@@ -48,7 +48,7 @@ struct CoverageMap: View {
                 ForEach(posted) { trip in
                     Annotation(trip.driver?.displayName ?? "Runner", coordinate: runnerSpot(trip)) {
                         Image(systemName: "figure.run.circle.fill")
-                            .font(.title2)
+                            .font(Theme.text(.title2))
                             .symbolRenderingMode(.palette)
                             .foregroundStyle(.white, Theme.maroon)
                             .accessibilityLabel("Runner in \(trip.originCity)")
@@ -57,11 +57,7 @@ struct CoverageMap: View {
             }
             .mapStyle(.standard(elevation: .flat))
             .frame(height: 280)
-            .clipShape(InkCard())
-            .overlay(InkCard().stroke(Theme.ink.opacity(0.8), lineWidth: 1.6))
-            .background(alignment: .topLeading) {
-                InkCard().fill(Theme.maroon.opacity(0.88)).offset(x: 3, y: 4)
-            }
+            .mapFrame()
             .accessibilityElement(children: .ignore)
             .accessibilityIdentifier("coverage-map")
             .accessibilityLabel("Map of Texas cities Home Run covers and runners with posted trips")
@@ -94,7 +90,7 @@ struct DriverTrackMap: View {
                         .tint(Theme.maroon)
                     Annotation("Runner", coordinate: runner) {
                         Image(systemName: "figure.run.circle.fill")
-                            .font(.title)
+                            .font(Theme.text(.title))
                             .symbolRenderingMode(.palette)
                             .foregroundStyle(.white, Theme.maroon)
                     }
@@ -103,12 +99,8 @@ struct DriverTrackMap: View {
                 }
                 .mapStyle(.standard(elevation: .flat))
             }
-            .frame(height: 280)
-            .clipShape(InkCard())
-            .overlay(InkCard().stroke(Theme.ink.opacity(0.8), lineWidth: 1.6))
-            .background(alignment: .topLeading) {
-                InkCard().fill(Theme.maroon.opacity(0.88)).offset(x: 3, y: 4)
-            }
+                .frame(height: 280)
+            .mapFrame()
             .accessibilityElement(children: .ignore)
             .accessibilityIdentifier("driver-track")
             .accessibilityLabel("Simulated map of your runner between the pickup and the drop-off")

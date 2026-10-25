@@ -48,9 +48,10 @@ struct OrderDetailView: View {
                 ProgressView("Loading order…").padding(40)
             }
         }
-        .homeRunPage(road: false)
-        .background(Theme.cream.ignoresSafeArea())
-        .toolbarBackground(Theme.cream, for: .navigationBar)
+        .homeRunPage(road: forRunner)
+        .environment(\.onTheRoad, forRunner)
+        .background((forRunner ? Theme.runnerPaper : Theme.cream).ignoresSafeArea())
+        .toolbarBackground(forRunner ? Theme.runnerPaper : Theme.orderingBar, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.light, for: .navigationBar)
         .navigationTitle(order?.restaurantName ?? "Order")
@@ -188,16 +189,16 @@ struct OrderDetailView: View {
                     .foregroundStyle(Theme.muted)
             } else if role == "driver", order.usesCustomerHandoff, order.pendingReadyAt != nil {
                 Text("The customer asked for a new pickup time. The delivery fee stays the same until you agree.")
-                Button("Agree to the new time") { Task { await decideWindow(order, "accept") } }.fontWeight(.bold)
+                Button("Agree to the new time") { Task { await decideWindow(order, "accept") } }.font(Theme.text(.body, weight: .semibold))
                 Button("Keep the earlier time") { Task { await decideWindow(order, "decline") } }
             } else if role == "driver", order.usesCustomerHandoff, order.placeChangePending == true {
                 Text(order.pendingRestaurantName ?? "The customer asked about a different branch.")
-                Button("Agree, keep the delivery fee") { Task { await decidePlace(order) } }.fontWeight(.bold)
+                Button("Agree, keep the delivery fee") { Task { await decidePlace(order) } }.font(Theme.text(.body, weight: .semibold))
             } else if role == "driver", order.usesCustomerHandoff, order.detailsNeedReview {
                 Text("Review pickup details").font(Theme.text(.headline, weight: .semibold))
                 Text("Customer submitted confirmation. This is not proof the merchant is ready.")
                     .font(Theme.text(.caption)).foregroundStyle(Theme.muted)
-                Button("Details received") { Task { await markReviewed(order) } }.fontWeight(.bold)
+                Button("Details received") { Task { await markReviewed(order) } }.font(Theme.text(.body, weight: .semibold))
                 Button("Ask a question") { messageText = "" }
                     .font(Theme.text(.body, weight: .semibold))
             } else if role == "driver", order.usesCustomerHandoff, order.status == .accepted {
@@ -215,7 +216,7 @@ struct OrderDetailView: View {
             } else if role == "customer", order.isRunnerPurchase, order.purchaseState == "revision", let revised = order.revisionMerchandiseCents {
                 Text("The store total is \(Fees.money(Double(revised) / 100)). You approved \(Fees.money(Double(order.merchandiseCents ?? 0) / 100)).")
                     .font(Theme.text(.body, weight: .semibold))
-                Button("Approve new merchandise total") { Task { await revise(order, "accept") } }.fontWeight(.bold)
+                Button("Approve new merchandise total") { Task { await revise(order, "accept") } }.font(Theme.text(.body, weight: .semibold))
                 Button("Keep the approved total") { Task { await revise(order, "decline") } }
             } else if role == "customer", !forRunner, model.side != .driving, order.needsHandoffForm {
                 if order.status == .requested && !order.isPersonalPickup {
@@ -269,7 +270,7 @@ struct OrderDetailView: View {
                 Text("The runner offered \(Fees.money(Double(cents) / 100)).")
                     .font(Theme.text(.body, weight: .semibold))
                 if let reason = order.counterReason { Text(reason).font(Theme.text(.caption)).foregroundStyle(Theme.muted) }
-                Button("Approve price") { Task { await decide("accept") } }.fontWeight(.bold)
+                Button("Approve price") { Task { await decide("accept") } }.font(Theme.text(.body, weight: .semibold))
                 Button("Keep earlier terms") { Task { await decide("decline") } }
             }
             if (role == "customer" && order.customerMayCancel) || (role == "driver" && order.driverMayCancel) {
@@ -298,7 +299,8 @@ struct OrderDetailView: View {
                     Spacer()
                 }
                 .padding(20)
-                .homeRunPage(road: false)
+                .homeRunPage(road: forRunner)
+                .environment(\.onTheRoad, forRunner)
                 .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { helpOpen = false } } }
             }
             .presentationDetents([.medium])
@@ -389,12 +391,12 @@ struct OrderDetailView: View {
             Text("Restaurant").font(Theme.text(.headline, weight: .semibold))
             Text(order.restaurantAddress ?? "")
             if let website = restaurantURL(order.restaurantWebsite) {
-                Link("Restaurant website", destination: website).fontWeight(.bold)
+                Link("Restaurant website", destination: website).font(Theme.text(.body, weight: .semibold))
             }
             Text("Handoff").font(Theme.text(.headline, weight: .semibold)).padding(.top, 6)
             Text(order.destinationLabel)
             if let directions = URL(string: "https://maps.apple.com/?daddr=\(order.destinationLat),\(order.destinationLng)") {
-                Link("Meetup directions", destination: directions).fontWeight(.bold)
+                Link("Meetup directions", destination: directions).font(Theme.text(.body, weight: .semibold))
             }
             if let arrival = order.estimatedArrivalAt {
                 Text("Estimated around \(Format.time(arrival))").font(Theme.text(.caption)).foregroundStyle(Theme.muted)
@@ -629,7 +631,7 @@ struct OrderDetailView: View {
             RequiredLabel(title: "Pickup code", required: false)
             EntryField("Pickup code, if you have one", text: $pickupCode).padding(12).sketchPanel()
             if let website = restaurantURL(order.restaurantWebsite) {
-                Link("Merchant website", destination: website).fontWeight(.bold)
+                Link("Merchant website", destination: website).font(Theme.text(.body, weight: .semibold))
             }
         }
         Picker("Pickup window", selection: $windowChoice) {
@@ -781,8 +783,7 @@ struct RouteMap: View {
             }
         }
         .frame(height: 220)
-        .clipShape(InkCard())
-        .overlay(InkCard().stroke(Theme.ink.opacity(0.8), lineWidth: 1.6))
+        .mapFrame()
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Map of the delivery route")
     }

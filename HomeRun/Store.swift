@@ -2097,7 +2097,7 @@ actor AppDatabase {
             context.fill(CGRect(x: 0, y: 0, width: 640, height: 360))
             let copy = "Sample basket\nNot a real customer order\nRice bowl    $24.00" as NSString
             copy.draw(in: CGRect(x: 28, y: 36, width: 580, height: 280), withAttributes: [
-                .font: UIFont.systemFont(ofSize: 28, weight: .semibold),
+                .font: UIFont(name: "InstrumentSans-Regular_SemiBold", size: 28) ?? Theme.fieldFont(size: 28),
                 .foregroundColor: UIColor(red: 0.31, green: 0.08, blue: 0.13, alpha: 1),
             ])
         }

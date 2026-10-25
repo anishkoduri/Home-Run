@@ -29,7 +29,7 @@ struct ProfileView: View {
                     .sketchPanel()
 
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("Your details").font(Theme.section())
+                        Text("Your details").font(Theme.section()).foregroundStyle(Theme.maroon)
                         RequiredLabel(title: "Display name", required: true)
                         EntryField("Display name", text: $name)
                             .padding(12)
@@ -50,7 +50,7 @@ struct ProfileView: View {
                     .sketchPanel()
 
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("About").font(Theme.section())
+                        Text("About").font(Theme.section()).foregroundStyle(Theme.maroon)
                         Wordmark(compact: true)
                         Text("By Aggies, for Aggies.")
                             .font(Theme.text(.subheadline, weight: .semibold))
@@ -62,7 +62,7 @@ struct ProfileView: View {
                     .sketchPanel()
 
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("Demo tools").font(Theme.section())
+                        Text("Demo tools").font(Theme.section()).foregroundStyle(Theme.maroon)
                         NavigationLink("Notifications") { InboxView() }
                         NavigationLink("Saved requests") { SavedRequestsView() }
                         NavigationLink("Saved places") { SavedPlacesView() }
@@ -75,7 +75,7 @@ struct ProfileView: View {
                     .sketchPanel()
 
                     VStack(alignment: .leading, spacing: 0) {
-                        Text("Demo people").font(Theme.section()).padding(.bottom, 4)
+                        Text("Demo people").font(Theme.section()).foregroundStyle(Theme.maroon).padding(.bottom, 4)
                         ForEach(actors) { actor in
                             Button {
                                 Task {
@@ -125,8 +125,7 @@ struct ProfileView: View {
             .navigationTitle("Profile")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .navigationBar)
-            .toolbarBackground(Theme.cream, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .homeRunPage(road: false)
             .background(Theme.cream.ignoresSafeArea())
             .onAppear {

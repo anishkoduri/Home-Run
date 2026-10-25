@@ -27,7 +27,7 @@ struct EntryField: UIViewRepresentable {
     func makeUIView(context: Context) -> UIView {
         if axis == .vertical {
             let view = UITextView()
-            view.font = .systemFont(ofSize: 17)
+            view.font = Theme.fieldFont()
             view.backgroundColor = .clear
             view.textColor = UIColor(red: 28 / 255, green: 18 / 255, blue: 20 / 255, alpha: 1)
             view.isScrollEnabled = true
@@ -38,7 +38,7 @@ struct EntryField: UIViewRepresentable {
             return view
         }
         let field = UITextField()
-        field.font = .systemFont(ofSize: 17)
+        field.font = Theme.fieldFont()
         field.textColor = UIColor(red: 28 / 255, green: 18 / 255, blue: 20 / 255, alpha: 1)
         field.placeholder = prompt.isEmpty ? title : prompt
         field.keyboardType = keyboard

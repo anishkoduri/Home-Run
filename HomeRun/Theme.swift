@@ -8,6 +8,10 @@ enum Theme {
     static let artwork = maroon
     static let maroonDark = Color(red: 44 / 255, green: 10 / 255, blue: 16 / 255)
     static let cream = Color(red: 246 / 255, green: 241 / 255, blue: 234 / 255)
+    /// Top of the ordering wash, so a visible bar matches the page behind it.
+    static let orderingBar = Color(red: 240 / 255, green: 198 / 255, blue: 164 / 255)
+    /// Ordering stays on cream. Running uses this warmer sheet so the workspace is obvious.
+    static let runnerPaper = Color(red: 243 / 255, green: 228 / 255, blue: 224 / 255)
     static let surface = Color.white
     static let tint = Color(red: 245 / 255, green: 242 / 255, blue: 241 / 255)
     static let gold = Color(red: 184 / 255, green: 146 / 255, blue: 90 / 255)
@@ -43,14 +47,21 @@ enum Theme {
         mono(style, weight: .semibold)
     }
 
-    /// Reading text. Source Sans 3. Captions and footnotes use mono instead.
+    /// Reading text and controls. Instrument Sans, SIL OFL. Captions and footnotes use mono.
     static func text(_ style: Font.TextStyle = .body, weight: Font.Weight = .regular) -> Font {
         switch style {
         case .caption, .caption2, .footnote:
             return mono(style, weight: weight == .regular ? .medium : weight)
         default:
-            return .custom("Source Sans 3", size: textSize(style), relativeTo: style).weight(weight)
+            return .custom("Instrument Sans", size: textSize(style), relativeTo: style).weight(weight)
         }
+    }
+
+    /// Static-enough face for UIKit fields. The variable SwiftUI font was swallowing taps.
+    static func fieldFont(size: CGFloat = 17) -> UIFont {
+        UIFont(name: "InstrumentSans-Regular", size: size)
+            ?? UIFont(name: "Instrument Sans", size: size)
+            ?? .systemFont(ofSize: size)
     }
 
     /// Labels, metadata, and small print. IBM Plex Mono, SIL OFL.
@@ -80,14 +91,21 @@ enum Theme {
         }
     }
 
-    /// Fraunces with a little softness and wonk. Used for the wordmark, which scales through `@ScaledMetric`.
-    static func wordmarkFont(size: CGFloat) -> UIFont {
-        let base = UIFont(name: "Fraunces", size: size) ?? .systemFont(ofSize: size, weight: .medium)
+    /// Fraunces for screen titles in the navigation bar, matching `brand()`.
+    static func screenFont(size: CGFloat) -> UIFont {
+        UIFont(name: "Fraunces", size: size) ?? .systemFont(ofSize: size, weight: .medium)
+    }
+
+    /// Light display serif for the name. Newsreader, SIL OFL, in the role of Claude’s headline face.
+    /// Anthropic Serif is proprietary and is not embedded.
+    static func wordmarkFont(size: CGFloat, bold: Bool = false) -> UIFont {
+        let base = UIFont(name: "Newsreader", size: size)
+            ?? UIFont(name: "NewsreaderRoman-Light", size: size)
+            ?? .systemFont(ofSize: size, weight: .light)
+        let display = size >= 36
         let variations: [NSNumber: NSNumber] = [
-            2003265652: 640,
-            1869640570: 120,
-            1397187412: 8,
-            1465147979: 0
+            2003265652: NSNumber(value: bold ? 620 : (display ? 300 : 360)),
+            1869640570: NSNumber(value: Double(display ? 72 : max(6, min(72, size))))
         ]
         let descriptor = base.fontDescriptor.addingAttributes([
             UIFontDescriptor.AttributeName(rawValue: "NSCTFontVariationAttribute"): variations
@@ -149,7 +167,7 @@ struct PaperFiber: View {
     var body: some View {
         Canvas { context, size in
             let area = size.width * size.height
-            let count = quiet ? min(90, max(24, Int(area / 9000))) : min(280, max(60, Int(area / 2200)))
+            let count = quiet ? min(140, max(36, Int(area / 6400))) : min(280, max(60, Int(area / 2200)))
             for index in 0 ..< count {
                 var state = UInt32(index) &* 1_103_515_245 &+ 12_345
                 func unit() -> CGFloat {
@@ -158,12 +176,12 @@ struct PaperFiber: View {
                 }
                 let x = unit() * size.width
                 let y = unit() * size.height
-                let length: CGFloat = quiet ? 3 + unit() * 7 : (index % 11 == 0 ? 12 + unit() * 10 : 2.5 + unit() * 5)
+                let length: CGFloat = quiet ? 4 + unit() * 9 : (index % 11 == 0 ? 12 + unit() * 10 : 2.5 + unit() * 5)
                 let angle = unit() * .pi
                 var path = Path()
                 path.move(to: CGPoint(x: x, y: y))
                 path.addLine(to: CGPoint(x: x + cos(angle) * length, y: y + sin(angle) * length))
-                let alpha = quiet ? 0.03 + Double(unit()) * 0.04 : 0.05 + Double(unit()) * 0.06
+                let alpha = quiet ? 0.05 + Double(unit()) * 0.06 : 0.05 + Double(unit()) * 0.06
                 context.stroke(path, with: .color(tone.opacity(alpha)), lineWidth: quiet ? 0.45 : 0.7)
             }
         }
@@ -233,11 +251,11 @@ struct PrimaryButton: View {
         Button(action: action) {
             HStack(spacing: 8) {
                 if busy { ProgressView().tint(foreground) }
-                Text(title).fontWeight(.bold)
+                Text(title)
             }
             .frame(maxWidth: .infinity, minHeight: 44)
             .padding(.vertical, 12)
-            .font(Theme.text(.body, weight: .semibold))
+            .font(Theme.text(.body, weight: .bold))
             .foregroundStyle(foreground)
         }
         .buttonStyle(StampButtonStyle(color: color))
@@ -277,7 +295,6 @@ struct ErrorBanner: View {
 struct StatusPill: View {
     var status: OrderStatus
     var title: String? = nil
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Text(title ?? status.label)
@@ -286,9 +303,8 @@ struct StatusPill: View {
             .padding(.vertical, 5)
             .foregroundStyle(foreground)
             .background(background)
-            .clipShape(InkCard())
-            .overlay(InkCard().stroke(foreground.opacity(0.55), style: StrokeStyle(lineWidth: 1.2, dash: [3, 2])))
-            .rotationEffect(.degrees(reduceMotion ? 0 : -2))
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(foreground.opacity(0.45), lineWidth: 1))
             .accessibilityLabel(title ?? status.label)
     }
 
@@ -333,8 +349,8 @@ struct PlacePlate: View {
             .foregroundStyle(Theme.maroon)
             .frame(width: 56, height: 56)
             .background(Theme.tint)
-            .clipShape(InkCard())
-            .overlay(InkCard().stroke(Theme.maroon.opacity(0.45), lineWidth: 1.2))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.gold.opacity(0.85), lineWidth: 1.25))
             .accessibilityHidden(true)
     }
 }
@@ -372,9 +388,9 @@ struct HomeRunPage: ViewModifier {
             .background {
                 Group {
                     if useRoad {
-                        Theme.road.overlay(PaperFiber(tone: .white, quiet: true))
+                        Theme.runnerPaper.overlay(PaperFiber(tone: Theme.maroon, quiet: true))
                     } else {
-                        Theme.cream.overlay(PaperFiber(tone: Theme.maroon, quiet: true))
+                        OrderingCanvas()
                     }
                 }
                 .ignoresSafeArea()
@@ -389,34 +405,89 @@ private struct GlassShape: View {
     var body: some View {
         RoundedRectangle(cornerRadius: 22, style: .continuous)
             .fill(.ultraThinMaterial)
-            .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(fill.opacity(0.78)))
-            .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(ink, lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(fill.opacity(0.42)))
+            .overlay(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.9), ink.opacity(0.35)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                        lineWidth: 1
+                    )
+            )
+    }
+}
+
+/// Warm field behind every ordering screen. Running keeps `runnerPaper`.
+struct OrderingCanvas: View {
+    var body: some View {
+        LinearGradient(
+            colors: [
+                Color(red: 228 / 255, green: 176 / 255, blue: 118 / 255),
+                Color(red: 240 / 255, green: 198 / 255, blue: 164 / 255),
+                Color(red: 244 / 255, green: 214 / 255, blue: 190 / 255)
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        .overlay(
+            RadialGradient(
+                colors: [Theme.coral.opacity(0.34), Color.clear],
+                center: .topTrailing,
+                startRadius: 12,
+                endRadius: 520
+            )
+        )
+        .overlay(PaperFiber(tone: Theme.maroon, quiet: true))
     }
 }
 
 struct SketchBackdrop: ViewModifier {
     var fill: Color = .white
     var ink: Color = Color.white.opacity(0.85)
+    @Environment(\.onTheRoad) private var onTheRoad
 
     func body(content: Content) -> some View {
         content
-            .background { GlassShape(fill: fill, ink: ink) }
+            .background { GlassShape(fill: fill, ink: onTheRoad ? ink : Theme.gold) }
             .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-            .shadow(color: Theme.ink.opacity(0.07), radius: 16, y: 8)
+            .overlay {
+                if !onTheRoad {
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [Theme.gold, Theme.coral.opacity(0.7)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 1.25
+                        )
+                }
+            }
+            .shadow(color: (onTheRoad ? Theme.ink : Theme.maroon).opacity(0.14), radius: 18, y: 10)
     }
 }
 
 struct TicketBackdrop: ViewModifier {
     var open: Bool = false
+    @Environment(\.onTheRoad) private var onTheRoad
 
     func body(content: Content) -> some View {
         content
             .background {
-                GlassShape(fill: .white, ink: Color.white.opacity(open ? 0.95 : 0.8))
+                GlassShape(fill: .white, ink: onTheRoad ? Color.white.opacity(open ? 0.95 : 0.8) : Theme.gold)
             }
             .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
             .overlay(alignment: .leading) {
-                Rectangle().fill(Theme.maroon.opacity(open ? 1 : 0.7)).frame(width: 3)
+                Rectangle()
+                    .fill(
+                        onTheRoad
+                            ? AnyShapeStyle(Theme.maroon.opacity(open ? 1 : 0.7))
+                            : AnyShapeStyle(LinearGradient(colors: [Theme.gold, Theme.coral], startPoint: .top, endPoint: .bottom))
+                    )
+                    .frame(width: 3)
             }
             .shadow(color: Theme.maroon.opacity(open ? 0.16 : 0.06), radius: open ? 16 : 12, y: 8)
     }
@@ -434,6 +505,24 @@ extension View {
 
     func ticketPanel(open: Bool = false) -> some View {
         modifier(TicketBackdrop(open: open))
+    }
+
+    func mapFrame() -> some View {
+        modifier(MapFrame())
+    }
+}
+
+private struct MapFrame: ViewModifier {
+    @Environment(\.onTheRoad) private var onTheRoad
+
+    func body(content: Content) -> some View {
+        content
+            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .strokeBorder(onTheRoad ? Color.white.opacity(0.72) : Theme.gold.opacity(0.9), lineWidth: 1.25)
+            )
+            .shadow(color: Theme.maroon.opacity(onTheRoad ? 0.18 : 0.12), radius: 16, y: 8)
     }
 }
 

@@ -81,7 +81,7 @@ struct DiscoverView: View {
                                     .foregroundStyle(Theme.maroon)
                                     .frame(maxWidth: .infinity, minHeight: 44)
                                     .background(.white.opacity(0.55), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Theme.maroon.opacity(0.55), lineWidth: 1))
+                                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Theme.gold, lineWidth: 1.5))
                             }
                             .buttonStyle(PressStyle())
                             .accessibilityIdentifier("home-or-personal")
@@ -94,7 +94,7 @@ struct DiscoverView: View {
                                     .foregroundStyle(Theme.maroon)
                                     .frame(maxWidth: .infinity, minHeight: 44)
                                     .background(.white.opacity(0.55), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Theme.maroon.opacity(0.55), lineWidth: 1))
+                                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Theme.gold, lineWidth: 1.5))
                             }
                             .buttonStyle(PressStyle())
                             .accessibilityIdentifier("home-or-personal")
@@ -225,11 +225,11 @@ struct DiscoverView: View {
                             }
                             if let website = restaurantURL(restaurant.place.website) {
                                 Link("Restaurant website", destination: website)
-                                    .fontWeight(.bold)
+                                    .font(Theme.text(.body, weight: .semibold))
                             }
-                            Button("Change") { self.restaurant = nil }.fontWeight(.bold)
+                            Button("Change") { self.restaurant = nil }.font(Theme.text(.body, weight: .semibold))
                         }
-                        Text("Handoff").font(Theme.section())
+                        Text("Handoff").font(Theme.section()).foregroundStyle(Theme.maroon)
                         ChoiceBar(options: ["campus", "address"], label: { $0 == "campus" ? "Campus" : "Address" }, selection: $handoffMode)
                         if handoffMode == "campus" {
                             ForEach(Places.meetups) { point in
@@ -238,7 +238,7 @@ struct DiscoverView: View {
                                 } label: {
                                     HStack {
                                         VStack(alignment: .leading) {
-                                            Text(point.label).fontWeight(.semibold)
+                                            Text(point.label).font(Theme.text(.body, weight: .semibold))
                                             Text(point.detail).font(Theme.text(.caption)).foregroundStyle(Theme.muted)
                                         }
                                         Spacer()
@@ -258,7 +258,7 @@ struct DiscoverView: View {
                                 .frame(minHeight: 44)
                                 .sketchPanel()
                             Button("Find address") { Task { await searchAddress() } }
-                                .fontWeight(.bold)
+                                .font(Theme.text(.body, weight: .semibold))
                             if handoff.type == "address" {
                                 Text("Delivering to \(handoff.label)").font(Theme.text(.caption)).foregroundStyle(Theme.muted)
                             }
@@ -269,7 +269,7 @@ struct DiscoverView: View {
                                     addressResults = []
                                 } label: {
                                     VStack(alignment: .leading) {
-                                        Text(place.name).fontWeight(.semibold)
+                                        Text(place.name).font(Theme.text(.body, weight: .semibold))
                                         Text(place.address).font(Theme.text(.caption)).foregroundStyle(Theme.muted)
                                     }
                                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -292,7 +292,7 @@ struct DiscoverView: View {
                                     .font(Theme.text(.body, weight: .bold))
                                     .foregroundStyle(.white)
                                     .frame(maxWidth: .infinity, minHeight: 48)
-                                    .background(InkCard().fill(Theme.maroon))
+                                    .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Theme.maroon))
                             }
                             .buttonStyle(PressStyle())
                             .accessibilityIdentifier("continue-order")
@@ -301,7 +301,7 @@ struct DiscoverView: View {
                                 .font(Theme.text(.caption))
                                 .foregroundStyle(Theme.muted)
                         }
-                        Text("Trips").font(Theme.section())
+                        Text("Trips").font(Theme.section()).foregroundStyle(Theme.maroon)
                         if !dayChoices.isEmpty {
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack {
@@ -343,8 +343,8 @@ struct DiscoverView: View {
             .navigationTitle("Discover")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(embedded ? .visible : .hidden, for: .navigationBar)
-            .toolbarBackground(Theme.cream, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarBackground(Theme.orderingBar, for: .navigationBar)
+            .toolbarBackground(embedded ? .visible : .hidden, for: .navigationBar)
             .toolbarColorScheme(.light, for: .navigationBar)
             .task {
                 if let saved = model.stagedFavorite {
@@ -385,7 +385,7 @@ struct DiscoverView: View {
             .sheet(isPresented: $showFilters) {
                 NavigationStack {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("Category").font(Theme.section())
+                        Text("Category").font(Theme.section()).foregroundStyle(Theme.maroon)
                         ChoiceBar(
                             options: ["all", "food", "groceries", "stores"],
                             label: { option in

@@ -55,7 +55,7 @@ struct AuthView: View {
                                 Image(systemName: use == option ? "checkmark.circle.fill" : "circle")
                                     .foregroundStyle(Theme.maroon)
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(option.title).fontWeight(.semibold).foregroundStyle(Theme.ink)
+                                    Text(option.title).font(Theme.text(.body, weight: .semibold)).foregroundStyle(Theme.ink)
                                     Text(option.detail).font(Theme.text(.caption)).foregroundStyle(Theme.muted)
                                 }
                                 Spacer()
@@ -75,6 +75,7 @@ struct AuthView: View {
                             EntryField("Password", text: $password)
                         } else {
                             SecureField("Password", text: $password)
+                                .font(Theme.text(.body))
                         }
                     }
                     .textContentType(mode == .signIn ? .password : .newPassword)
@@ -105,7 +106,7 @@ struct AuthView: View {
                     mode = mode == .signIn ? .signUp : .signIn
                     error = nil
                 }
-                .fontWeight(.bold)
+                .font(Theme.text(.body, weight: .semibold))
                 .frame(maxWidth: .infinity)
                 if mode == .signIn {
                     Button("Forgot password") { error = "No email was sent. This demo keeps the password on this phone." }

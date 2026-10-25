@@ -68,8 +68,7 @@ struct OrdersView: View {
             .navigationTitle("Orders")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .navigationBar)
-            .toolbarBackground(Theme.cream, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbarColorScheme(.light, for: .navigationBar)
             .navigationDestination(for: String.self) { OrderDetailView(id: $0) }
             .navigationDestination(for: SavedPlace.self) { FavoritePlaceView(place: $0) }
@@ -145,7 +144,7 @@ struct FavoritePlaceView: View {
                 .font(Theme.text(.headline, weight: .semibold))
                 .frame(maxWidth: .infinity, minHeight: 48)
                 .foregroundStyle(.white)
-                .background(InkCard().fill(Theme.maroon))
+                .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Theme.maroon))
             }
             Spacer()
         }

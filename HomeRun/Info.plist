@@ -6,6 +6,8 @@
 	<array>
 		<string>Fraunces[SOFT,WONK,opsz,wght].ttf</string>
 		<string>SourceSans3[wght].ttf</string>
+		<string>InstrumentSans[wdth,wght].ttf</string>
+		<string>Newsreader[opsz,wght].ttf</string>
 		<string>IBMPlexMono-Regular.ttf</string>
 		<string>IBMPlexMono-Medium.ttf</string>
 		<string>IBMPlexMono-SemiBold.ttf</string>

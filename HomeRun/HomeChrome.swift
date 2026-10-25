@@ -224,16 +224,19 @@ struct Hairline: View {
 struct Wordmark: View {
     var ink: Color = Theme.ink
     var compact = false
-    @ScaledMetric(relativeTo: .largeTitle) private var display: CGFloat = 46
+    var hero = false
+    @ScaledMetric(relativeTo: .largeTitle) private var display: CGFloat = 52
+    @ScaledMetric(relativeTo: .largeTitle) private var heroSize: CGFloat = 58
     @ScaledMetric(relativeTo: .title2) private var small: CGFloat = 28
 
     var body: some View {
         Text("Home Run")
-            .font(Font(Theme.wordmarkFont(size: compact ? small : display)))
-            .tracking(compact ? -0.4 : -1.1)
+            .font(Font(Theme.wordmarkFont(size: compact ? small : (hero ? heroSize : display), bold: hero)))
+            .tracking(hero ? -0.6 : -0.3)
             .foregroundStyle(ink)
             .lineLimit(1)
-            .minimumScaleFactor(0.55)
+            .allowsTightening(true)
+            .minimumScaleFactor(hero ? 0.6 : 0.55)
             .accessibilityAddTraits(.isHeader)
     }
 }
@@ -298,11 +301,16 @@ struct PageHeader: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
                 .font(Theme.brand(.title))
-                .foregroundStyle(Theme.ink)
+                .foregroundStyle(Theme.maroon)
                 .lineLimit(2)
                 .minimumScaleFactor(0.8)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityAddTraits(.isHeader)
+            HStack(spacing: 4) {
+                Capsule().fill(Theme.gold).frame(width: 28, height: 3)
+                Capsule().fill(Theme.coral).frame(width: 14, height: 3)
+            }
+            .accessibilityHidden(true)
             if let detail, !detail.isEmpty {
                 Text(detail)
                     .font(Theme.text(.subheadline))

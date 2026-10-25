@@ -18,9 +18,11 @@ struct HomeView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     hero
+                    campusBand
+                        .padding(.horizontal, 20)
+                        .padding(.top, 16)
                     pickupBar
-                        .padding(.top, -26)
-                        .zIndex(1)
+                        .padding(.top, 16)
                     VStack(alignment: .leading, spacing: 28) {
                         if let error { ErrorBanner(message: error) }
                         CoverageMap(trips: trips)
@@ -32,7 +34,7 @@ struct HomeView: View {
                     .padding(.bottom, 32)
                 }
             }
-            .background(Theme.cream)
+            .background { OrderingCanvas().ignoresSafeArea() }
             .toolbar(.hidden, for: .navigationBar)
             .toolbarBackground(Theme.maroon, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
@@ -52,17 +54,17 @@ struct HomeView: View {
 
     private var hero: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .center, spacing: 12) {
-                Wordmark(ink: .white)
-                Spacer(minLength: 8)
+            HStack(alignment: .center, spacing: 8) {
+                Wordmark(ink: .white, hero: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 NavigationLink {
                     InboxView()
                 } label: {
                     ZStack(alignment: .topTrailing) {
                         Image(systemName: "bell")
-                            .font(.body.weight(.semibold))
+                            .font(.system(size: typeSize.isAccessibilitySize ? 24 : 30, weight: .semibold))
                             .foregroundStyle(.white)
-                            .frame(width: 44, height: 44)
+                            .frame(width: typeSize.isAccessibilitySize ? 48 : 54, height: typeSize.isAccessibilitySize ? 48 : 54)
                         if model.noticeBadge > 0 {
                             Text("\(model.noticeBadge)")
                                 .font(Theme.text(.caption2, weight: .bold))
@@ -77,36 +79,36 @@ struct HomeView: View {
                 Image("BrandMark")
                     .resizable()
                     .scaledToFit()
-                    .frame(width: typeSize.isAccessibilitySize ? 64 : 78, height: typeSize.isAccessibilitySize ? 64 : 78)
+                    .frame(width: typeSize.isAccessibilitySize ? 88 : 120, height: typeSize.isAccessibilitySize ? 88 : 120)
                     .accessibilityHidden(true)
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 4)
-            .padding(.bottom, 8)
+            .padding(.horizontal, 12)
+            .padding(.top, 0)
+            .padding(.bottom, 2)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Theme.maroon)
-
-            VStack(alignment: .leading, spacing: 10) {
-                campusBand
-            }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background {
-                Theme.maroon.overlay(PaperFiber(tone: .white))
+            .overlay(alignment: .bottom) {
+                LinearGradient(colors: [Theme.gold, Theme.coral], startPoint: .leading, endPoint: .trailing)
+                    .frame(height: 3)
             }
         }
         .background(Theme.maroon.ignoresSafeArea(edges: .top))
     }
 
     private var campusBand: some View {
-        CampusSkyline(ink: Theme.maroon)
+        Image("CampusHall")
+            .resizable()
+            .scaledToFill()
             .frame(maxWidth: .infinity)
-            .frame(height: typeSize.isAccessibilitySize ? 88 : 124)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .sketchPanel(fill: .white, ink: Color.white.opacity(0.9))
-            .accessibilityElement(children: .combine)
+            .frame(height: typeSize.isAccessibilitySize ? 140 : 176, alignment: .top)
+            .clipped()
+            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .strokeBorder(Theme.gold.opacity(0.9), lineWidth: 1.5)
+            )
+            .shadow(color: Theme.ink.opacity(0.16), radius: 18, y: 10)
+            .accessibilityLabel("Campus buildings")
     }
 
     private var searchArrow: some View {
@@ -123,13 +125,13 @@ struct HomeView: View {
             .foregroundStyle(Theme.maroon)
             .frame(maxWidth: .infinity, minHeight: 44)
             .background(.white.opacity(0.55), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Theme.maroon.opacity(0.55), lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Theme.gold, lineWidth: 1.5))
     }
 
     private var pickupTitle: some View {
         Text("Find a pickup")
             .font(Theme.section(.title3))
-            .foregroundStyle(Theme.ink)
+            .foregroundStyle(Theme.maroon)
             .lineLimit(1)
             .minimumScaleFactor(0.85)
     }
@@ -189,7 +191,6 @@ struct HomeView: View {
             }
         }
         .padding(16)
-        .background(Theme.surface)
         .sketchPanel()
         .padding(.horizontal, 16)
         .padding(.top, 14)
@@ -202,7 +203,7 @@ struct HomeView: View {
             VStack(alignment: .leading, spacing: 0) {
                 Text("In motion")
                     .font(Theme.section())
-                    .foregroundStyle(Theme.ink)
+                    .foregroundStyle(Theme.maroon)
                     .padding(.bottom, 8)
                 ForEach(active) { order in
                     NavigationLink(value: order.id) {
@@ -232,10 +233,9 @@ struct HomeView: View {
     @ViewBuilder
     private var upcoming: some View {
         VStack(alignment: .leading, spacing: 14) {
-            StitchMark(tint: Theme.maroon.opacity(0.4))
             Text("Trips to College Station")
                 .font(Theme.section())
-                .foregroundStyle(Theme.ink)
+                .foregroundStyle(Theme.maroon)
             if !loaded && error == nil {
                 ProgressView("Loading trips")
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -263,7 +263,7 @@ struct HomeView: View {
             VStack(alignment: .leading, spacing: 2) {
             Text("No trips yet.")
                 .font(Theme.section(.headline))
-                .foregroundStyle(Theme.ink)
+                .foregroundStyle(Theme.maroon)
             if model.profile?.use != .order {
                 Button("Running") { model.side = .driving }
                     .font(Theme.text(.body, weight: .semibold))

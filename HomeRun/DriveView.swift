@@ -145,8 +145,8 @@ struct DriveView: View {
                 .animation(reduceMotion ? nil : .spring(duration: 0.32, bounce: 0.12), value: section)
             }
             }
-            .homeRunPage(road: false)
-            .background(Theme.cream.ignoresSafeArea())
+            .homeRunPage()
+            .background(Theme.runnerPaper.ignoresSafeArea())
             .toolbar(.hidden, for: .navigationBar)
             .toolbarBackground(Theme.maroon, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
@@ -162,7 +162,8 @@ struct DriveView: View {
                         Spacer()
                     }
                     .padding(20)
-                    .homeRunPage(road: false)
+                    .homeRunPage(road: true)
+                    .environment(\.onTheRoad, true)
                     .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { declining = nil } } }
                 }
                 .presentationDetents([.medium])
@@ -177,7 +178,8 @@ struct DriveView: View {
                         Spacer()
                     }
                     .padding(20)
-                    .homeRunPage(road: false)
+                    .homeRunPage(road: true)
+                    .environment(\.onTheRoad, true)
                     .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { countering = nil } } }
                 }
                 .presentationDetents([.medium])
@@ -236,7 +238,7 @@ struct DriveView: View {
 
     private func requestRow(_ order: Order) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(order.customer?.displayName ?? "Customer").fontWeight(.bold)
+            Text(order.customer?.displayName ?? "Customer").font(Theme.text(.headline, weight: .semibold))
             Text(order.restaurantName)
             Text(requestMoney(order))
                 .font(Theme.price(.subheadline))
@@ -244,8 +246,8 @@ struct DriveView: View {
             HStack {
                 NavigationLink("Details", value: order.id)
                 Button("Decline") { declining = order; declineReason = "" }.foregroundStyle(Theme.bad)
-                Button("Counter") { countering = order }.fontWeight(.semibold)
-                Button("Accept") { Task { await set(order, .accepted) } }.fontWeight(.bold).disabled(busy)
+                Button("Counter") { countering = order }.font(Theme.text(.subheadline, weight: .semibold))
+                Button("Accept") { Task { await set(order, .accepted) } }.font(Theme.text(.subheadline, weight: .bold)).disabled(busy)
             }
         }
         .padding(12)
@@ -256,7 +258,7 @@ struct DriveView: View {
         VStack(alignment: .leading, spacing: 6) {
             NavigationLink(value: order.id) {
                 VStack(alignment: .leading) {
-                    Text(order.restaurantName).fontWeight(.bold).foregroundStyle(Theme.ink)
+                    Text(order.restaurantName).font(Theme.text(.headline, weight: .semibold)).foregroundStyle(Theme.ink)
                     Text("\(order.customer?.displayName ?? "") · \(order.destinationLabel)")
                         .font(Theme.text(.caption)).foregroundStyle(Theme.muted)
                     Text(purchaseCaption(order))
@@ -265,14 +267,14 @@ struct DriveView: View {
                 }
             }
             if order.usesCustomerHandoff, order.detailsNeedReview {
-                NavigationLink("Review pickup details", value: order.id).fontWeight(.bold)
+                NavigationLink("Review pickup details", value: order.id).font(Theme.text(.subheadline, weight: .semibold))
             } else if let next = order.driverAction, next.0 == .pickedUp, order.usesCustomerHandoff {
-                NavigationLink("Open collection checklist", value: order.id).fontWeight(.bold)
+                NavigationLink("Open collection checklist", value: order.id).font(Theme.text(.subheadline, weight: .semibold))
             } else if order.status == .arriving {
                 Text("Open the delivery and enter the customer's code.")
                     .font(Theme.text(.caption)).foregroundStyle(Theme.muted)
             } else if let next = order.status.driverNext {
-                Button(next.1) { Task { await set(order, next.0) } }.fontWeight(.bold).disabled(busy)
+                Button(next.1) { Task { await set(order, next.0) } }.font(Theme.text(.subheadline, weight: .semibold)).disabled(busy)
             }
             Button("Report a delay") { Task { await delay(order) } }
                 .font(Theme.text(.caption, weight: .semibold))

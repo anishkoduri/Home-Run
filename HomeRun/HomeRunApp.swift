@@ -5,16 +5,16 @@ struct HomeRunApp: App {
     @State private var model = AppModel()
 
     init() {
-        let body = UIFont(name: "Source Sans 3", size: 17) ?? .systemFont(ofSize: 17)
+        let body = Theme.fieldFont()
         let caption = UIFont(name: "IBMPlexMono-Medium", size: 12) ?? UIFont(name: "IBM Plex Mono", size: 12) ?? .monospacedSystemFont(ofSize: 12, weight: .medium)
         let cream = UIColor(red: 246 / 255, green: 241 / 255, blue: 234 / 255, alpha: 1)
-        let ink = UIColor(red: 28 / 255, green: 18 / 255, blue: 20 / 255, alpha: 1)
         let appearance = UINavigationBarAppearance()
         appearance.configureWithOpaqueBackground()
         appearance.backgroundColor = cream
         appearance.shadowColor = .clear
-        appearance.titleTextAttributes = [.font: Theme.wordmarkFont(size: 18), .foregroundColor: ink]
-        appearance.largeTitleTextAttributes = [.font: Theme.wordmarkFont(size: 30), .foregroundColor: ink]
+        let maroon = UIColor(red: 80 / 255, green: 20 / 255, blue: 32 / 255, alpha: 1)
+        appearance.titleTextAttributes = [.font: Theme.screenFont(size: 18), .foregroundColor: maroon]
+        appearance.largeTitleTextAttributes = [.font: Theme.screenFont(size: 30), .foregroundColor: maroon]
         UINavigationBar.appearance().standardAppearance = appearance
         UINavigationBar.appearance().scrollEdgeAppearance = appearance
         UINavigationBar.appearance().compactAppearance = appearance
@@ -57,13 +57,15 @@ struct RootView: View {
             Theme.cream
             if !cover || mountHome {
                 destination
-                    .opacity(cover ? 0 : 1)
-                    .accessibilityHidden(cover)
+                    .scaleEffect(cover ? (0.92 + (0.08 * handoff)) : 1, anchor: .center)
+                    .opacity(cover ? handoff : 1)
+                    .accessibilityHidden(cover && handoff < 0.95)
             }
             if cover {
                 LaunchSlide { noteRunnerSettled() }
                     .compositingGroup()
-                    .scaleEffect(1 + (0.55 * handoff), anchor: .center)
+                    .scaleEffect(1 + (0.18 * handoff), anchor: .center)
+                    .offset(y: -48 * handoff)
                     .opacity(1 - handoff)
                     .allowsHitTesting(handoff == 0)
                     .zIndex(1)
@@ -127,11 +129,8 @@ struct RootView: View {
         }
         mountHome = true
         Task { @MainActor in
-            let elapsed = Date().timeIntervalSince(runnerSettledAt ?? Date())
-            let linger = max(0, 0.1 - elapsed)
-            if linger > 0 { try? await Task.sleep(for: .seconds(linger)) }
             guard showLaunch else { return }
-            withAnimation(.easeIn(duration: 0.2)) {
+            withAnimation(.timingCurve(0.16, 0.02, 0.18, 1, duration: 0.32)) {
                 handoff = 1
             } completion: {
                 var transaction = Transaction()
@@ -263,13 +262,18 @@ private struct OrderShell: View {
                 .accessibilityLabel(model.driveBadge > 0 ? "Running, \(model.driveBadge) waiting" : "Running")
                 .accessibilityHint("Switches to the running workspace")
             }
-            .padding(.horizontal, 10)
-            .padding(.top, 8)
-            .padding(.bottom, 6)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
             .background {
-                Rectangle().fill(.ultraThinMaterial).ignoresSafeArea(edges: .bottom)
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                    .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).fill(Color.white.opacity(0.38)))
+                    .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).strokeBorder(Theme.gold.opacity(0.85), lineWidth: 1.5))
+                    .shadow(color: Theme.ink.opacity(0.16), radius: 18, y: 8)
             }
-            .overlay(alignment: .top) { Rectangle().fill(Color.white.opacity(0.7)).frame(height: 1) }
+            .padding(.horizontal, 14)
+            .padding(.top, 6)
+            .padding(.bottom, 8)
             .zIndex(1)
         }
         .homeRunPage(road: false)
@@ -311,8 +315,12 @@ private struct OrderShell: View {
             .padding(.vertical, 4)
             .background {
                 if tab == value {
-                    InkCard()
-                        .fill(Theme.maroon.opacity(0.12))
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(Theme.gold.opacity(0.38))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .strokeBorder(Theme.coral.opacity(0.45), lineWidth: 1)
+                        )
                         .matchedGeometryEffect(id: "order-tab", in: tabSpace)
                 }
             }
@@ -356,8 +364,8 @@ private struct DriveShell: View {
                         .padding(.vertical, 6)
                         .background {
                             if section == item {
-                                InkCard()
-                                    .fill(Color.white)
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .fill(Color.white.opacity(0.92))
                                     .matchedGeometryEffect(id: "drive-tab", in: tabSpace)
                             }
                         }
@@ -389,16 +397,21 @@ private struct DriveShell: View {
                     .accessibilityLabel("Ordering")
                     .accessibilityHint("Switches to the ordering workspace")
             }
-            .padding(.horizontal, 10)
-            .padding(.top, 8)
-            .padding(.bottom, 6)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
             .background {
-                Theme.maroon.ignoresSafeArea(edges: .bottom)
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                    .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).fill(Theme.maroon.opacity(0.86)))
+                    .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).strokeBorder(Color.white.opacity(0.38), lineWidth: 1))
+                    .shadow(color: Theme.maroonDark.opacity(0.35), radius: 16, y: 8)
             }
-            .overlay(alignment: .top) { Rectangle().fill(Color.white.opacity(0.18)).frame(height: 1) }
+            .padding(.horizontal, 14)
+            .padding(.top, 6)
+            .padding(.bottom, 8)
             .zIndex(1)
         }
-        .homeRunPage(road: false)
+        .homeRunPage()
         .tint(Theme.maroon)
         .environment(\.onTheRoad, true)
     }
