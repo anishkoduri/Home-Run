@@ -42,7 +42,7 @@ struct AuthView: View {
                 field("Server", text: $server)
                     .textInputAutocapitalization(.never)
                     .keyboardType(.URL)
-                Text("The Howdy Haul dev server. The iPhone simulator can use http://127.0.0.1:5173.")
+                Text("The Home Run dev server. The iPhone simulator can use http://127.0.0.1:5173.")
                     .font(.caption)
                     .foregroundStyle(Theme.muted)
                 if let error { ErrorBanner(message: error) }

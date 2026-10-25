@@ -32,7 +32,7 @@ struct ProfileView: View {
                     TextField("Server address", text: $server)
                         .textInputAutocapitalization(.never)
                         .keyboardType(.URL)
-                    Text("Accounts and orders live on this Howdy Haul server.")
+                    Text("Accounts and orders live on this Home Run server.")
                         .font(.caption).foregroundStyle(Theme.muted)
                 }
                 Section {

@@ -85,7 +85,7 @@ enum Format {
         name?.split(separator: " ").first.map(String.init) ?? "there"
     }
 
-    static func shortId(_ id: String) -> String { "HH-\(id.prefix(4).uppercased())" }
+    static func shortId(_ id: String) -> String { "HR-\(id.prefix(4).uppercased())" }
 
     static func combine(day: Date, time: Date) -> String {
         let calendar = Calendar.current
