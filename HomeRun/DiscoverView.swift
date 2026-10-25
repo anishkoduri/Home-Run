@@ -80,9 +80,8 @@ struct DiscoverView: View {
                                     .font(Theme.text(.body, weight: .semibold))
                                     .foregroundStyle(Theme.maroon)
                                     .frame(maxWidth: .infinity, minHeight: 44)
-                                    .background(Theme.surface)
-                                    .clipShape(InkCard())
-                                    .overlay(InkCard().stroke(Theme.maroon, lineWidth: 1.6))
+                                    .background(.white.opacity(0.55), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Theme.maroon.opacity(0.55), lineWidth: 1))
                             }
                             .buttonStyle(PressStyle())
                             .accessibilityIdentifier("home-or-personal")
@@ -94,9 +93,8 @@ struct DiscoverView: View {
                                     .font(Theme.text(.body, weight: .semibold))
                                     .foregroundStyle(Theme.maroon)
                                     .frame(maxWidth: .infinity, minHeight: 44)
-                                    .background(Theme.surface)
-                                    .clipShape(InkCard())
-                                    .overlay(InkCard().stroke(Theme.maroon, lineWidth: 1.6))
+                                    .background(.white.opacity(0.55), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Theme.maroon.opacity(0.55), lineWidth: 1))
                             }
                             .buttonStyle(PressStyle())
                             .accessibilityIdentifier("home-or-personal")

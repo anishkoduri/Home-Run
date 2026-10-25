@@ -5,17 +5,16 @@ struct HomeRunApp: App {
     @State private var model = AppModel()
 
     init() {
-        let display = UIFont(name: "Fraunces", size: 18) ?? .systemFont(ofSize: 18, weight: .semibold)
         let body = UIFont(name: "Source Sans 3", size: 17) ?? .systemFont(ofSize: 17)
-        let caption = UIFont(name: "Source Sans 3", size: 13) ?? .systemFont(ofSize: 13, weight: .semibold)
+        let caption = UIFont(name: "IBMPlexMono-Medium", size: 12) ?? UIFont(name: "IBM Plex Mono", size: 12) ?? .monospacedSystemFont(ofSize: 12, weight: .medium)
         let cream = UIColor(red: 246 / 255, green: 241 / 255, blue: 234 / 255, alpha: 1)
         let ink = UIColor(red: 28 / 255, green: 18 / 255, blue: 20 / 255, alpha: 1)
         let appearance = UINavigationBarAppearance()
         appearance.configureWithOpaqueBackground()
         appearance.backgroundColor = cream
         appearance.shadowColor = .clear
-        appearance.titleTextAttributes = [.font: display, .foregroundColor: ink]
-        appearance.largeTitleTextAttributes = [.font: UIFont(name: "Fraunces", size: 30) ?? display, .foregroundColor: ink]
+        appearance.titleTextAttributes = [.font: Theme.wordmarkFont(size: 18), .foregroundColor: ink]
+        appearance.largeTitleTextAttributes = [.font: Theme.wordmarkFont(size: 30), .foregroundColor: ink]
         UINavigationBar.appearance().standardAppearance = appearance
         UINavigationBar.appearance().scrollEdgeAppearance = appearance
         UINavigationBar.appearance().compactAppearance = appearance
@@ -256,10 +255,8 @@ private struct OrderShell: View {
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 8)
-                    .background(InkCard().fill(Theme.maroon))
-                    .background(alignment: .topLeading) {
-                        InkCard().fill(Theme.maroonDark).offset(x: 2, y: 3)
-                    }
+                    .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Theme.maroon))
+                    .shadow(color: Theme.maroon.opacity(0.28), radius: 8, y: 4)
                 }
                 .buttonStyle(PressStyle())
                 .accessibilityIdentifier("bring-food")
@@ -270,10 +267,9 @@ private struct OrderShell: View {
             .padding(.top, 8)
             .padding(.bottom, 6)
             .background {
-                Theme.cream.overlay(PaperFiber(tone: Theme.maroon, quiet: true))
-                    .ignoresSafeArea(edges: .bottom)
+                Rectangle().fill(.ultraThinMaterial).ignoresSafeArea(edges: .bottom)
             }
-            .overlay(alignment: .top) { Rectangle().fill(Theme.ink.opacity(0.75)).frame(height: 1.5) }
+            .overlay(alignment: .top) { Rectangle().fill(Color.white.opacity(0.7)).frame(height: 1) }
             .zIndex(1)
         }
         .homeRunPage(road: false)
@@ -385,10 +381,8 @@ private struct DriveShell: View {
                         .foregroundStyle(Theme.maroon)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
-                        .background(InkCard().fill(Theme.cream))
-                        .background(alignment: .topLeading) {
-                            InkCard().fill(Theme.maroonDark).offset(x: 2, y: 3)
-                        }
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.white.opacity(0.7), lineWidth: 1))
                     }
                     .buttonStyle(PressStyle())
                     .accessibilityIdentifier("get-food")

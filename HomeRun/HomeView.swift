@@ -53,12 +53,7 @@ struct HomeView: View {
     private var hero: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .center, spacing: 12) {
-                Text("Home Run")
-                    .font(Theme.brand(.largeTitle))
-                    .foregroundStyle(.white)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.65)
-                    .fixedSize(horizontal: false, vertical: true)
+                Wordmark(ink: .white)
                 Spacer(minLength: 8)
                 NavigationLink {
                     InboxView()
@@ -92,7 +87,7 @@ struct HomeView: View {
             .background(Theme.maroon)
 
             VStack(alignment: .leading, spacing: 10) {
-                photoBand
+                campusBand
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 14)
@@ -104,24 +99,14 @@ struct HomeView: View {
         .background(Theme.maroon.ignoresSafeArea(edges: .top))
     }
 
-    private var photoBand: some View {
-        Group {
-            if UIImage(named: "FoodPlate") != nil {
-                Image("FoodPlate")
-                    .resizable()
-                    .scaledToFill()
-            } else {
-                ZStack {
-                    Theme.maroonDark
-                    GroceryBagSketch()
-                }
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .frame(height: typeSize.isAccessibilitySize ? 96 : 132)
-        .clipShape(InkCard())
-        .overlay(InkCard().stroke(.white.opacity(0.85), lineWidth: 1.6))
-        .accessibilityHidden(true)
+    private var campusBand: some View {
+        CampusSkyline(ink: Theme.maroon)
+            .frame(maxWidth: .infinity)
+            .frame(height: typeSize.isAccessibilitySize ? 88 : 124)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .sketchPanel(fill: .white, ink: Color.white.opacity(0.9))
+            .accessibilityElement(children: .combine)
     }
 
     private var searchArrow: some View {
@@ -129,7 +114,7 @@ struct HomeView: View {
             .font(Theme.text(.body, weight: .bold))
             .foregroundStyle(.white)
             .frame(width: 48, height: 48)
-            .background(InkCard().fill(Theme.maroon))
+            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Theme.maroon))
     }
 
     private var personalEntryLabel: some View {
@@ -137,9 +122,8 @@ struct HomeView: View {
             .font(Theme.text(.body, weight: .semibold))
             .foregroundStyle(Theme.maroon)
             .frame(maxWidth: .infinity, minHeight: 44)
-            .background(Theme.surface)
-            .clipShape(InkCard())
-            .overlay(InkCard().stroke(Theme.maroon, lineWidth: 1.6))
+            .background(.white.opacity(0.55), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Theme.maroon.opacity(0.55), lineWidth: 1))
     }
 
     private var pickupTitle: some View {
@@ -394,7 +378,7 @@ private struct TripRouteDetail: View {
                     .font(Theme.text(.headline, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity, minHeight: 48)
-                    .background(InkCard().fill(Theme.maroon))
+                    .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Theme.maroon))
             }
             .buttonStyle(PressStyle())
             .disabled((trip.activeOrders ?? 0) >= trip.maxOrders)

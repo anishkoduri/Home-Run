@@ -24,37 +24,75 @@ enum Theme {
     static let radiusControl: CGFloat = 14
     static let space: CGFloat = 20
 
-    /// Brand and screen titles. Fraunces, SIL OFL. Not for buttons, prices, or section labels.
+    /// Screen titles. Fraunces, SIL OFL, scaled with Dynamic Type.
     static func brand(_ style: Font.TextStyle = .largeTitle) -> Font {
-        .custom("Fraunces", size: brandSize(style), relativeTo: style).weight(.semibold)
+        .custom("Fraunces", size: brandSize(style), relativeTo: style).weight(.medium)
     }
 
     static func display(_ style: Font.TextStyle = .title2) -> Font {
         brand(style)
     }
 
-    /// Section headings, controls, and metadata. Source Sans 3, SIL OFL.
+    /// Section headings. Same serif, smaller, so they belong to the titles without becoming body text.
     static func section(_ style: Font.TextStyle = .title3) -> Font {
-        text(style, weight: .semibold)
+        .custom("Fraunces", size: sectionSize(style), relativeTo: style).weight(.medium)
     }
 
+    /// Money. IBM Plex Mono, SIL OFL, so figures stay clear.
     static func price(_ style: Font.TextStyle = .title3) -> Font {
-        text(style, weight: .bold)
+        mono(style, weight: .semibold)
     }
 
+    /// Reading text. Source Sans 3. Captions and footnotes use mono instead.
     static func text(_ style: Font.TextStyle = .body, weight: Font.Weight = .regular) -> Font {
-        .custom("Source Sans 3", size: textSize(style), relativeTo: style).weight(weight)
+        switch style {
+        case .caption, .caption2, .footnote:
+            return mono(style, weight: weight == .regular ? .medium : weight)
+        default:
+            return .custom("Source Sans 3", size: textSize(style), relativeTo: style).weight(weight)
+        }
+    }
+
+    /// Labels, metadata, and small print. IBM Plex Mono, SIL OFL.
+    static func mono(_ style: Font.TextStyle = .caption, weight: Font.Weight = .medium) -> Font {
+        .custom("IBM Plex Mono", size: monoSize(style), relativeTo: style).weight(weight)
     }
 
     private static func brandSize(_ style: Font.TextStyle) -> CGFloat {
         switch style {
-        case .largeTitle: return 34
+        case .largeTitle: return 36
         case .title: return 30
-        case .title2: return 24
+        case .title2: return 26
         case .title3: return 22
         case .headline: return 20
         default: return 18
         }
+    }
+
+    private static func sectionSize(_ style: Font.TextStyle) -> CGFloat {
+        switch style {
+        case .largeTitle: return 28
+        case .title: return 24
+        case .title2: return 22
+        case .title3: return 20
+        case .headline: return 18
+        default: return 17
+        }
+    }
+
+    /// Fraunces with a little softness and wonk. Used for the wordmark, which scales through `@ScaledMetric`.
+    static func wordmarkFont(size: CGFloat) -> UIFont {
+        let base = UIFont(name: "Fraunces", size: size) ?? .systemFont(ofSize: size, weight: .medium)
+        let variations: [NSNumber: NSNumber] = [
+            2003265652: 640,
+            1869640570: 120,
+            1397187412: 8,
+            1465147979: 0
+        ]
+        let descriptor = base.fontDescriptor.addingAttributes([
+            UIFontDescriptor.AttributeName(rawValue: "NSCTFontVariationAttribute"): variations
+        ])
+        return UIFont(descriptor: descriptor, size: size)
     }
 
     private static func textSize(_ style: Font.TextStyle) -> CGFloat {
@@ -71,6 +109,19 @@ enum Theme {
         case .caption: return 12
         case .caption2: return 11
         default: return 17
+        }
+    }
+
+    private static func monoSize(_ style: Font.TextStyle) -> CGFloat {
+        switch style {
+        case .title, .title2, .title3: return 20
+        case .headline, .body: return 16
+        case .callout: return 15
+        case .subheadline: return 14
+        case .footnote: return 12
+        case .caption: return 12
+        case .caption2: return 11
+        default: return 13
         }
     }
 }
@@ -202,11 +253,9 @@ struct StampButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         let pressed = configuration.isPressed && !reduceMotion
         configuration.label
-            .background(InkCard().fill(color))
-            .offset(x: pressed ? 3 : 0, y: pressed ? 4 : 0)
-            .background(alignment: .topLeading) {
-                InkCard().fill(Theme.maroonDark).offset(x: 3, y: 4)
-            }
+            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(color))
+            .shadow(color: color.opacity(pressed ? 0.05 : 0.22), radius: pressed ? 4 : 10, y: pressed ? 2 : 6)
+            .scaleEffect(pressed ? 0.98 : 1)
             .opacity(configuration.isPressed ? 0.92 : 1)
             .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isPressed)
     }
@@ -333,20 +382,27 @@ struct HomeRunPage: ViewModifier {
     }
 }
 
+private struct GlassShape: View {
+    var fill: Color
+    var ink: Color
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 22, style: .continuous)
+            .fill(.ultraThinMaterial)
+            .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(fill.opacity(0.78)))
+            .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(ink, lineWidth: 1))
+    }
+}
+
 struct SketchBackdrop: ViewModifier {
-    var fill: Color = Theme.surface
-    var ink: Color = Theme.ink.opacity(0.82)
+    var fill: Color = .white
+    var ink: Color = Color.white.opacity(0.85)
 
     func body(content: Content) -> some View {
         content
-            .background(fill)
-            .clipShape(InkCard())
-            .overlay(InkCard().stroke(ink, lineWidth: 1.6))
-            .background(alignment: .topLeading) {
-                InkCard()
-                    .fill(Theme.maroon.opacity(0.88))
-                    .offset(x: 3, y: 4)
-            }
+            .background { GlassShape(fill: fill, ink: ink) }
+            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .shadow(color: Theme.ink.opacity(0.07), radius: 16, y: 8)
     }
 }
 
@@ -355,29 +411,14 @@ struct TicketBackdrop: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .background(Theme.surface)
-            .clipShape(InkCard())
+            .background {
+                GlassShape(fill: .white, ink: Color.white.opacity(open ? 0.95 : 0.8))
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
             .overlay(alignment: .leading) {
-                VStack(spacing: 7) {
-                    ForEach(0 ..< 7, id: \.self) { _ in
-                        Circle().fill(Theme.cream).frame(width: 5, height: 5)
-                    }
-                }
-                .padding(.vertical, 10)
-                .frame(maxHeight: .infinity)
-                .padding(.leading, 7)
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
+                Rectangle().fill(Theme.maroon.opacity(open ? 1 : 0.7)).frame(width: 3)
             }
-            .overlay(alignment: .leading) {
-                Rectangle().fill(Theme.maroon).frame(width: 3)
-            }
-            .overlay(InkCard().stroke(Theme.ink.opacity(open ? 0.9 : 0.75), lineWidth: open ? 2 : 1.5))
-            .background(alignment: .topLeading) {
-                InkCard()
-                    .fill(Theme.maroon.opacity(open ? 0.95 : 0.72))
-                    .offset(x: 3, y: 4)
-            }
+            .shadow(color: Theme.maroon.opacity(open ? 0.16 : 0.06), radius: open ? 16 : 12, y: 8)
     }
 }
 

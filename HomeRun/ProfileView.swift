@@ -13,9 +13,9 @@ struct ProfileView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
                 PageHeader(title: "Profile")
                     .padding(.horizontal, -20)
-                VStack(alignment: .leading, spacing: 16) {
                     HStack(spacing: 12) {
                         Avatar(name: model.profile?.displayName)
                         VStack(alignment: .leading, spacing: 2) {
@@ -51,7 +51,7 @@ struct ProfileView: View {
 
                     VStack(alignment: .leading, spacing: 8) {
                         Text("About").font(Theme.section())
-                        Text("Home Run").font(Theme.brand(.title3))
+                        Wordmark(compact: true)
                         Text("By Aggies, for Aggies.")
                             .font(Theme.text(.subheadline, weight: .semibold))
                             .foregroundStyle(Theme.maroon)
@@ -74,8 +74,8 @@ struct ProfileView: View {
                     .padding(16)
                     .sketchPanel()
 
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Demo people").font(Theme.section())
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("Demo people").font(Theme.section()).padding(.bottom, 4)
                         ForEach(actors) { actor in
                             Button {
                                 Task {
@@ -88,13 +88,16 @@ struct ProfileView: View {
                                     Text(actor.detail).font(Theme.text(.caption)).foregroundStyle(Theme.muted)
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.vertical, 8)
                                 .frame(minHeight: 44)
                             }
                             .buttonStyle(.plain)
                             .accessibilityIdentifier("demo-actor-\(actor.id)")
+                            Hairline()
                         }
                         Button("Advance demo clock 1 day") { DemoClock.advance(by: 86_400) }
                             .font(Theme.text(.caption, weight: .semibold))
+                            .padding(.top, 10)
                         Toggle("In-app notifications", isOn: Binding(
                             get: { model.profile?.notify != false },
                             set: { value in Task { await setNotify(value) } }

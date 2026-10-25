@@ -220,15 +220,87 @@ struct Hairline: View {
     }
 }
 
+/// The product name, set as a logo. The artwork mark stays untouched.
+struct Wordmark: View {
+    var ink: Color = Theme.ink
+    var compact = false
+    @ScaledMetric(relativeTo: .largeTitle) private var display: CGFloat = 46
+    @ScaledMetric(relativeTo: .title2) private var small: CGFloat = 28
+
+    var body: some View {
+        Text("Home Run")
+            .font(Font(Theme.wordmarkFont(size: compact ? small : display)))
+            .tracking(compact ? -0.4 : -1.1)
+            .foregroundStyle(ink)
+            .lineLimit(1)
+            .minimumScaleFactor(0.55)
+            .accessibilityAddTraits(.isHeader)
+    }
+}
+
+/// Original line drawing of a domed hall, a tower, and a bowl. Not a university mark.
+struct CampusSkyline: View {
+    var ink: Color = Theme.maroon
+
+    var body: some View {
+        Canvas { context, size in
+            let w = size.width
+            let h = size.height
+            let ground = h * 0.78
+            var path = Path()
+            path.move(to: CGPoint(x: w * 0.04, y: ground))
+            path.addLine(to: CGPoint(x: w * 0.96, y: ground))
+
+            func hall(x: CGFloat, width: CGFloat, top: CGFloat) {
+                path.move(to: CGPoint(x: x, y: ground))
+                path.addLine(to: CGPoint(x: x, y: top))
+                path.addLine(to: CGPoint(x: x + width, y: top))
+                path.addLine(to: CGPoint(x: x + width, y: ground))
+            }
+            hall(x: w * 0.06, width: w * 0.16, top: h * 0.46)
+            path.move(to: CGPoint(x: w * 0.06, y: h * 0.46))
+            path.addLine(to: CGPoint(x: w * 0.14, y: h * 0.34))
+            path.addLine(to: CGPoint(x: w * 0.22, y: h * 0.46))
+
+            let domeX = w * 0.40
+            path.move(to: CGPoint(x: w * 0.28, y: ground))
+            path.addLine(to: CGPoint(x: w * 0.28, y: h * 0.48))
+            path.addLine(to: CGPoint(x: w * 0.52, y: h * 0.48))
+            path.addLine(to: CGPoint(x: w * 0.52, y: ground))
+            path.move(to: CGPoint(x: w * 0.33, y: h * 0.48))
+            path.addQuadCurve(to: CGPoint(x: w * 0.47, y: h * 0.48), control: CGPoint(x: domeX, y: h * 0.16))
+            path.move(to: CGPoint(x: domeX, y: h * 0.22))
+            path.addLine(to: CGPoint(x: domeX, y: h * 0.12))
+
+            hall(x: w * 0.58, width: w * 0.08, top: h * 0.22)
+            path.move(to: CGPoint(x: w * 0.56, y: h * 0.22))
+            path.addLine(to: CGPoint(x: w * 0.68, y: h * 0.22))
+            path.move(to: CGPoint(x: w * 0.60, y: h * 0.22))
+            path.addLine(to: CGPoint(x: w * 0.62, y: h * 0.10))
+            path.addLine(to: CGPoint(x: w * 0.64, y: h * 0.22))
+
+            path.move(to: CGPoint(x: w * 0.74, y: ground))
+            path.addQuadCurve(to: CGPoint(x: w * 0.96, y: ground), control: CGPoint(x: w * 0.85, y: h * 0.42))
+            path.move(to: CGPoint(x: w * 0.78, y: h * 0.62))
+            path.addLine(to: CGPoint(x: w * 0.92, y: h * 0.62))
+
+            context.stroke(path, with: .color(ink), style: StrokeStyle(lineWidth: 1.6, lineCap: .round, lineJoin: .round))
+        }
+        .accessibilityLabel("Line drawing of campus buildings")
+    }
+}
+
 struct PageHeader: View {
     var title: String
     var detail: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 4) {
             Text(title)
-                .font(Theme.brand(.largeTitle))
+                .font(Theme.brand(.title))
                 .foregroundStyle(Theme.ink)
+                .lineLimit(2)
+                .minimumScaleFactor(0.8)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityAddTraits(.isHeader)
             if let detail, !detail.isEmpty {
@@ -239,7 +311,7 @@ struct PageHeader: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 20)
-        .padding(.top, 6)
+        .padding(.top, 4)
         .padding(.bottom, 2)
         .accessibilityElement(children: .combine)
     }
@@ -272,7 +344,7 @@ struct ChoiceBar<Value: Hashable>: View {
                         .frame(maxWidth: .infinity, minHeight: 40)
                         .background {
                             if selection == option {
-                                InkCard()
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
                                     .fill(Theme.maroon)
                                     .matchedGeometryEffect(id: "choice", in: space)
                             }
@@ -283,11 +355,6 @@ struct ChoiceBar<Value: Hashable>: View {
             }
         }
         .padding(4)
-        .background(Theme.surface)
-        .clipShape(InkCard())
-        .overlay(InkCard().stroke(Theme.ink.opacity(0.8), lineWidth: 1.5))
-        .background(alignment: .topLeading) {
-            InkCard().fill(Theme.maroon.opacity(0.85)).offset(x: 2, y: 3)
-        }
+        .sketchPanel()
     }
 }

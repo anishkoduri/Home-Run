@@ -47,7 +47,7 @@ struct DriveView: View {
         NavigationStack(path: $path) {
             VStack(spacing: 0) {
                 HStack(alignment: .center, spacing: 8) {
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: 3) {
                         Text("Running")
                             .font(Theme.text(.caption, weight: .bold))
                             .foregroundStyle(Theme.cream.opacity(0.8))
@@ -468,9 +468,15 @@ struct DriveView: View {
                 .font(Theme.text(.caption, weight: .semibold))
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
-                .background(InkCard().fill(selected ? Theme.maroon : Theme.surface))
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(selected ? Theme.maroon : Color.white.opacity(0.55))
+                )
                 .foregroundStyle(selected ? Color.white : Theme.ink)
-                .overlay(InkCard().stroke(Theme.ink.opacity(selected ? 0 : 0.7), lineWidth: 1.2))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(Color.white.opacity(selected ? 0 : 0.8), lineWidth: 1)
+                )
         }
         .buttonStyle(.plain)
     }

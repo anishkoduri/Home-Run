@@ -25,10 +25,8 @@ struct AuthView: View {
                         .scaledToFit()
                         .frame(width: 84, height: 84)
                         .accessibilityHidden(true)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Home Run")
-                            .font(Theme.brand(.title2))
-                            .foregroundStyle(.white)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Wordmark(ink: .white)
                         Text("By Aggies, for Aggies.")
                             .font(Theme.text(.caption, weight: .semibold))
                             .foregroundStyle(.white.opacity(0.9))
