@@ -94,7 +94,7 @@ struct HomeView: View {
             .background(Theme.maroon)
 
             VStack(alignment: .leading, spacing: 10) {
-                Text("Food runs to College Station.")
+                Text("Supply drops for Aggies from Aggies.")
                     .font(Theme.text(.subheadline))
                     .foregroundStyle(.white.opacity(0.9))
                 photoBand
